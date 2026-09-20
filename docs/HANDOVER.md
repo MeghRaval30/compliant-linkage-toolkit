@@ -345,14 +345,32 @@ command, writing `figures.json` recording which inputs produced each one:
 
 Pass `--measured`, `--torque` and `--uncertainty` as those measurements arrive.
 
+Every figure is laid out at its **final printed width**, one journal column (3.4 in) by
+default, and identity is carried by hue *and* dash pattern *and* marker, with a hatch on
+filled marks. So they read in one ink and to a colour-blind reader. `--column double` gives
+the full-width variant. The series hues were chosen against three gates at once -- all-pairs
+colour vision, greyscale separation, and contrast against the surface -- which is what ruled
+out the first palette: orange and aqua separate well in colour and land ten grey levels
+apart, which is no pair at all in print. Tests enforce the greyscale separation, the
+uniqueness of the dash and marker per series, and that every figure still fits a column.
+
 ### Two things this turned up
 
-**The placement artefact is larger than the physics gap.** On `fb_02_0052` the unmatched
-placement moves the coupler path by **0.567 mm mean / 1.166 mm max**, against a PRBM-to-FEA
-disagreement of 0.451 mm mean on the same design. The handover's earlier figure of ~0.2 mm
-was for a 4 mm flexure; the pilots' flexures are 7.5-8.7 mm, and the artefact scales with
-length. Pivot matching is not a refinement -- without it the conversion artefact would be
-the dominant term in the measurement.
+**The placement artefact is larger than the physics gap, on every pilot.** Written up in
+full in [`docs/results/conversion_artefact.md`](results/conversion_artefact.md):
+
+| design | artefact mean (mm) | PRBM-vs-FEA mean (mm) | ratio |
+|---|---|---|---|
+| `fb_02_0052` | 0.563 | 0.448 | 1.3x |
+| `fb_02_0090` | 1.718 | 0.150 | **11.5x** |
+| `fb_02_0203` | 1.901 | 0.202 | **9.4x** |
+
+The shift is exactly proportional to the **pivot displacement** `f_pivot * L`, not to
+flexure length -- the constant holds to 0.7-2.4% across a 6x length range and across the
+PRBM model boundary, where `f_pivot` drops from 0.5 to 0.265 and the raw artefact therefore
+*falls* as the flexure gets longer. Pivot matching is not a refinement: without it the
+conversion artefact is the dominant term in the measurement, and it is indistinguishable
+from a sim-to-real gap by inspection.
 
 **The beam FEA no longer needs a CAD kernel.** `_attachment_points` lived in
 `cmtool/cad/mechanism.py`, which imports cadquery at module scope, so every beam FEA run

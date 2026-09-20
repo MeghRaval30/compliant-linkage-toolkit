@@ -14,6 +14,7 @@ Three things these exist to protect, in order of how badly they would hurt:
 
 from __future__ import annotations
 
+import itertools
 import json
 
 import numpy as np
@@ -22,7 +23,16 @@ import pytest
 from cmtool import Linkage, convert
 from cmtool.convert.placement import attachment_points
 from cmtool.viz.html import external_references, render_html, write_html
-from cmtool.viz.palette import SERIES, STATUS, STRAIN_RAMP_LIGHT, strain_colour
+from cmtool.viz.palette import (
+    HATCH,
+    ORDINAL_RAMP_LIGHT,
+    SERIES,
+    STATUS,
+    STRAIN_RAMP_LIGHT,
+    greyscale_contrast,
+    relative_luminance,
+    strain_colour,
+)
 from cmtool.viz.scene import build_scene
 
 pytestmark = pytest.mark.filterwarnings("ignore::cmtool.core.quantities.ProvisionalDataWarning")
@@ -317,3 +327,39 @@ class TestPalette:
 
     def test_no_model_reuses_a_status_colour(self):
         assert not set(STATUS.values()) & {s.light for s in SERIES.values()}
+
+    def test_every_series_separates_in_greyscale(self):
+        """These figures go to a journal that may print in one ink.
+
+        Colour separation is not enough on its own: the first palette chosen here
+        was a fine colour set whose orange and aqua landed ten grey levels apart,
+        which is no pair at all on paper.
+        """
+        worst = min(
+            greyscale_contrast(a.light, b.light)
+            for a, b in itertools.combinations(SERIES.values(), 2)
+        )
+        assert worst >= 1.4
+        greys = sorted(style.grey for style in SERIES.values())
+        assert all(second - first >= 25 for first, second in itertools.pairwise(greys))
+
+    def test_identity_never_rests_on_colour_alone(self):
+        """Dash and marker are the redundant channels the journal asked for."""
+        assert len({style.marker for style in SERIES.values()}) == len(SERIES)
+        assert len({style.dash for style in SERIES.values()}) == len(SERIES)
+        assert all(style.marker for style in SERIES.values())
+
+    def test_filled_marks_carry_a_hatch_instead_of_a_dash(self):
+        """A fill has no dash pattern, so texture is what survives one ink."""
+        assert set(HATCH) == set(SERIES)
+        used = [h for h in HATCH.values() if h]
+        assert len(set(used)) == len(used)
+
+    def test_the_ordinal_ramp_is_monotone_in_lightness(self):
+        """An ordered quantity has to read as ordered without colour."""
+        luminances = [relative_luminance(step) for step in ORDINAL_RAMP_LIGHT]
+        assert luminances == sorted(luminances, reverse=True)
+
+    def test_the_ordinal_ramp_stays_visible_against_the_surface(self):
+        """Unlike a sequential ramp, an ordinal step may not recede into the page."""
+        assert greyscale_contrast(ORDINAL_RAMP_LIGHT[0], "#fcfcfb") >= 2.0

@@ -11,16 +11,26 @@ the viewer, its torque curve. The measured series is deliberately *not* a hue: i
 is drawn in primary ink, because it is the reference the others are judged
 against rather than a fourth opinion.
 
-The three hues were chosen by running the palette validator over candidate
-triples rather than by eye, on the all-pairs test (the paths overlap in one
-plane, so every pair has to separate, not just adjacent ones). Orange / aqua /
-violet passes every gate in both light and dark: worst all-pairs colour-vision
-separation dE 9.2 light and 9.4 dark against a target of 8, worst normal-vision
-separation 27.6 and 24.6 against a floor of 15.
+Three gates had to pass at once, and each was checked by computation rather than
+by eye:
 
-Aqua falls below 3:1 contrast on the light surface, so the relief rule applies:
-**every series carries a direct label or a legend entry and a distinct dash
-pattern**, and identity is never left to colour alone.
+1. **Colour vision**, all-pairs -- the curves overlap in one plane, so every pair
+   has to separate, not just adjacent ones. Magenta / green / violet gives worst
+   all-pairs dE 17.6 light and 13.0 dark against a target of 8, and worst
+   normal-vision separation 33.9 and 19.7 against a floor of 15.
+2. **Greyscale**, because these figures go to a journal that may print in one
+   ink. Reduced to luminance the three sit at 156, 112 and 77 out of 255, with
+   the measured series at 19: four levels a reader can separate on paper. This is
+   what ruled out the first choice -- orange and aqua are a fine colour pair and
+   land ten grey levels apart, which is no pair at all in print.
+3. **Contrast against the surface.** Magenta falls below 3:1 on the light
+   surface, so the relief rule applies.
+
+Relief and the journal requirement turn out to be the same thing: **every series
+carries a distinct dash pattern and a distinct marker as well as its hue**, plus
+a direct label or a legend entry. Identity never rests on colour alone, so the
+figures read in one ink, on a bad projector, and to a colour-blind reader. Filled
+marks have no dash to carry, so they take a hatch instead.
 
 Strain is a different job -- continuous magnitude, not identity -- so it gets a
 sequential one-hue blue ramp, light to dark, with the anchor flipped in dark mode
@@ -45,13 +55,22 @@ class SeriesStyle:
     dark: str
     #: SVG ``stroke-dasharray``; empty means solid.
     dash: str
-    #: Matplotlib linestyle for the same series.
+    #: Matplotlib dash pattern for the same series; ``None`` means solid.
     mpl_dash: tuple[float, ...] | None
+    #: Matplotlib marker: the second redundant channel after the dash pattern, so
+    #: a greyscale print and a colour-blind reader both still separate the series
+    #: -- and so do two curves that happen to lie on top of each other.
+    marker: str
     width: float = 2.0
 
     def colour(self, theme: str = "light") -> str:
         """Return the hex colour for ``theme``."""
         return self.dark if theme == "dark" else self.light
+
+    @property
+    def grey(self) -> int:
+        """Luminance of the light-theme colour, 0-255, as a greyscale print shows it."""
+        return round(relative_luminance(self.light) ** (1.0 / 2.2) * 255)
 
 
 #: Drawing style per model. Order is the order they are listed in legends.
@@ -59,18 +78,20 @@ SERIES: dict[str, SeriesStyle] = {
     "rigid": SeriesStyle(
         key="rigid",
         label="rigid",
-        light="#eb6834",
-        dark="#d95926",
+        light="#e87ba4",
+        dark="#d55181",
         dash="7 3",
         mpl_dash=(7.0, 3.0),
+        marker="o",
     ),
     "prbm": SeriesStyle(
         key="prbm",
         label="PRBM",
-        light="#1baf7a",
-        dark="#199e70",
+        light="#008300",
+        dark="#008300",
         dash="9 3 2 3",
         mpl_dash=(9.0, 3.0, 2.0, 3.0),
+        marker="s",
     ),
     "fea": SeriesStyle(
         key="fea",
@@ -79,16 +100,28 @@ SERIES: dict[str, SeriesStyle] = {
         dark="#9085e9",
         dash="",
         mpl_dash=None,
+        marker="^",
     ),
     "measured": SeriesStyle(
         key="measured",
         label="measured",
         light="#0b0b0b",
         dark="#ffffff",
-        dash="",
-        mpl_dash=None,
-        width=2.6,
+        dash="2 2",
+        mpl_dash=(2.0, 2.0),
+        marker="D",
+        width=2.4,
     ),
+}
+
+#: Hatch per series, for marks that are filled rather than stroked. A fill has no
+#: dash pattern to carry, so texture is what makes a bar chart survive one ink.
+#: Angles are 45 degrees and its mirror only, never a third direction.
+HATCH: dict[str, str] = {
+    "rigid": "///",
+    "prbm": "\\" * 3,
+    "fea": "",
+    "measured": "xxx",
 }
 
 #: Sequential blue ramp for strain, lightest (near zero) first.
@@ -179,3 +212,25 @@ def _mix(first: str, second: str, fraction: float) -> str:
 def _rgb(value: str) -> tuple[int, int, int]:
     text = value.lstrip("#")
     return int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)
+
+
+def relative_luminance(colour: str) -> float:
+    """Return the WCAG relative luminance of a hex colour, 0 to 1.
+
+    This is what a greyscale print reduces the colour to, so it is the number the
+    palette's journal requirement is checked against.
+    """
+    channels = []
+    for value in _rgb(colour):
+        fraction = value / 255.0
+        channels.append(
+            fraction / 12.92 if fraction <= 0.04045 else ((fraction + 0.055) / 1.055) ** 2.4
+        )
+    red, green, blue = channels
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def greyscale_contrast(first: str, second: str) -> float:
+    """Contrast ratio between two colours once both are reduced to grey."""
+    a, b = relative_luminance(first), relative_luminance(second)
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)

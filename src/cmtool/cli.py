@@ -727,6 +727,10 @@ def figures_cmd(
         str | None, typer.Option(help="Comma-separated figure names; default is all of them")
     ] = None,
     theme: Annotated[str, typer.Option(help="light or dark")] = "light",
+    column: Annotated[
+        str,
+        typer.Option(help="Page width to lay out for: single (one journal column) or double"),
+    ] = "single",
     formats: Annotated[str, typer.Option(help="Comma-separated: png, svg, pdf")] = "png",
     material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
     printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
@@ -737,6 +741,10 @@ def figures_cmd(
     labelled, or skipped with a reason -- never filled in with a stand-in. Pass
     --measured, --torque and --uncertainty as those measurements arrive and the
     same command produces the finished set.
+
+    Every figure is laid out at its final printed width -- one journal column by
+    default -- and carries a dash pattern and a marker per series as well as a
+    colour, so it survives a greyscale print and a colour-blind reader.
     """
     from cmtool.viz.figures import DEFAULT_DESIGNS, build_inputs, generate_all
 
@@ -759,7 +767,7 @@ def figures_cmd(
         material=material,
         printer=printer,
     )
-    results = generate_all(out, inputs, theme=theme, formats=suffixes, only=wanted)
+    results = generate_all(out, inputs, theme=theme, formats=suffixes, only=wanted, column=column)
 
     table = Table(title=f"figures -> {out}")
     table.add_column("figure")

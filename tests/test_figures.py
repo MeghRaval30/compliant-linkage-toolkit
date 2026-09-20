@@ -16,6 +16,7 @@ import pytest
 from cmtool import Linkage, convert
 from cmtool.core.provenance import Provenance
 from cmtool.viz.figures import (
+    SINGLE_COLUMN_IN,
     FigureInputs,
     fig_conversion_artefact,
     fig_design_rule,
@@ -26,6 +27,7 @@ from cmtool.viz.figures import (
     fig_torque_curves,
     fig_uncertainty,
     generate_all,
+    layout_for,
 )
 from cmtool.viz.scene import build_scene
 
@@ -263,3 +265,48 @@ class TestMeasuredPathWhenItExists:
 
         gap = next(c for c in with_measured.comparisons if c["b"] == "measured" and c["a"] == "fea")
         assert gap["mean_mm"] == pytest.approx(float(np.hypot(0.3, 0.2)), rel=1e-3)
+
+
+class TestJournalGeometry:
+    """Every figure has to survive being dropped into one column of a journal."""
+
+    def test_an_unknown_width_is_refused_by_name(self):
+        with pytest.raises(ValueError, match="unknown column width"):
+            layout_for("quarter")
+
+    @pytest.mark.parametrize(
+        "builder",
+        [fig_path_overlay, fig_torque_curves, fig_strain, fig_feasibility, fig_design_rule],
+    )
+    def test_fits_a_single_journal_column(self, inputs, tmp_path, builder):
+        """Laid out at the final printed width, not shrunk into it afterwards.
+
+        ``savefig`` uses a tight bounding box, so an unwrapped title or an
+        over-wide caption silently widens the saved file past the column. A
+        small tolerance covers the tight-box padding.
+        """
+        from PIL import Image
+
+        result = builder(inputs, tmp_path, column="single")
+        assert result.path is not None
+        with Image.open(result.path) as image:
+            width_in = image.size[0] / image.info.get("dpi", (300, 300))[0]
+        assert width_in <= SINGLE_COLUMN_IN * 1.08, f"{result.name} is {width_in:.2f} in wide"
+
+    def test_double_column_is_wider_than_single(self, inputs, tmp_path):
+        from PIL import Image
+
+        widths = {}
+        for column in ("single", "double"):
+            out = tmp_path / column
+            result = fig_torque_curves(inputs, out, column=column)
+            assert result.path is not None
+            with Image.open(result.path) as image:
+                widths[column] = image.size[0]
+        assert widths["double"] > widths["single"] * 1.5
+
+    def test_the_manifest_records_the_width_it_was_built_for(self, inputs, tmp_path):
+        generate_all(tmp_path, inputs, only=("feasibility",), column="double")
+        manifest = json.loads((tmp_path / "figures.json").read_text(encoding="utf-8"))
+        assert manifest["column"] == "double"
+        assert manifest["figure_width_in"] == pytest.approx(7.0)

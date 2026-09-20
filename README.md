@@ -145,10 +145,15 @@ the rigid and PRBM outlines over them as ghosts and all the coupler paths undern
 ![pivot-matched against unmatched flexure placement](docs/figures/conversion_artefact.png)
 
 Placing flexures without accounting for where they actually pivot moves the coupler path by
-**more than the PRBM-to-FEA disagreement on the same design**. Both curves here are rigid
-simulations — no material, no stiffness, no solver difference — so the whole of that shift
-is a conversion choice. Keeping it separable is what stops it being read as a
-simulation-to-reality gap.
+**1.3 to 11.5 times the PRBM-to-FEA disagreement**, depending on the design. Both curves
+here are rigid simulations — no material, no stiffness, no solver difference — so the whole
+of that shift is a conversion choice, and it is smooth, systematic and angle-dependent,
+which is to say indistinguishable from a simulation-to-reality gap.
+
+The shift turns out to be exactly proportional to how far the characteristic pivot is
+displaced, holding to within 2.4% across a 6x range of flexure length *and across the PRBM
+model boundary*, where the pivot fraction jumps from 0.5 to 0.265. Write-up:
+[docs/results/conversion_artefact.md](docs/results/conversion_artefact.md).
 
 ### Which PRBM variant a flexure joint needs, settled by our own FEA
 
@@ -156,7 +161,10 @@ simulation-to-reality gap.
 
 Two more, [strain through the arc](docs/figures/strain.png) and
 [per-joint feasibility](docs/figures/feasibility.png), are in `docs/figures/`, with
-`figures.json` recording which inputs produced each one. The eighth, the Phase A go/no-go,
+`figures.json` recording which inputs produced each one. Every one is laid out at its final
+printed width — one journal column — and carries a dash pattern and a marker per series as
+well as a colour, so it survives a greyscale print and a colour-blind reader.
+`--column double` gives the full-width version for a talk. The eighth, the Phase A go/no-go,
 is **skipped until real footage exists**: the synthetic harness validates the tracking
 software, not the rig, and its numbers would answer that question with the wrong
 measurement.

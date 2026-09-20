@@ -152,10 +152,10 @@
   ],
   "provenance": {
     "config_hash": "ecf9b14c9554fa9543f570cafc5e0ce60e1c6c6e1d2acf98941edfc24d111968",
-    "code_commit": "bb6137456a04d9afaa51240e9fc3e8540d269532-dirty",
+    "code_commit": "a28004045a231d392cc4665339a8d1f1fa2af001-dirty",
     "version": "0.1.0.dev0",
     "seed": null,
-    "created_utc": "2026-09-20T18:31:25+00:00",
+    "created_utc": "2026-09-20T19:25:45+00:00",
     "placeholders_used": [
       "kobra2_neo.design_rules.min_flexure_thickness_mm",
       "PLA.properties.allowable_strain",
@@ -171,6 +171,8 @@
     }
   },
   "theme": "light",
+  "column": "single",
+  "figure_width_in": 3.4,
   "formats": [
     "png"
   ],
