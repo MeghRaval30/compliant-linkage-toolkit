@@ -583,6 +583,204 @@ def export(
         console.print(f"[yellow]{caveat}[/]")
 
 
+def _convert_for_view(
+    linkage: Linkage,
+    *,
+    material: str,
+    printer: str,
+    thickness_mm: float | None,
+    fit_arc: bool,
+    target_excursion_deg: float,
+) -> Any:
+    """Convert a linkage the same way ``export`` does, so the picture matches the part."""
+    from cmtool.api import convert as convert_api
+    from cmtool.convert.arc import ArcFitError, fit_input_arc
+
+    arc = linkage.input_range_deg
+    if fit_arc:
+        try:
+            fit = fit_input_arc(linkage, max_joint_excursion_deg=target_excursion_deg)
+        except ArcFitError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from exc
+        arc = fit.input_range_deg
+    return convert_api(
+        linkage,
+        material=material,
+        printer=printer,
+        input_range_deg=arc,
+        thickness_mm=thickness_mm,
+    )
+
+
+@app.command(name="view")
+def view_cmd(
+    linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
+    html_out: Annotated[Path, typer.Option("--html", help="Where to write the viewer")] = Path(
+        "out/view.html"
+    ),
+    steps: Annotated[int, typer.Option(help="Precomputed states across the input arc")] = 41,
+    measured_csv: Annotated[
+        Path | None, typer.Option("--measured", help="Tracked path CSV to overlay")
+    ] = None,
+    solvers: Annotated[
+        str, typer.Option(help="Comma-separated models to include: rigid, prbm, fea")
+    ] = "rigid,prbm,fea",
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
+    thickness_mm: Annotated[
+        float | None, typer.Option(help="Flexure thickness; default is the printer minimum")
+    ] = None,
+    fit_arc: Annotated[
+        bool, typer.Option(help="Shrink the input arc to meet the excursion target")
+    ] = True,
+    target_excursion_deg: Annotated[
+        float, typer.Option(help="Ceiling for the worst joint excursion")
+    ] = 22.0,
+    min_flexure_mm: Annotated[
+        float,
+        typer.Option(help="Minimum drawn flexure width; 0 draws them at true scale"),
+    ] = 1.6,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Also write the scene as JSON")
+    ] = None,
+) -> None:
+    """Write a self-contained HTML viewer of a design over its input arc.
+
+    The output needs nothing to open: no server, no install, no network. Every
+    state is precomputed here and baked into the file, so the slider steps
+    through real solver output rather than anything the browser worked out.
+    """
+    from cmtool.metrics.paths import read_path_csv
+    from cmtool.viz.html import write_html
+    from cmtool.viz.scene import build_scene
+
+    linkage = Linkage.from_json(linkage_json)
+    mech = _convert_for_view(
+        linkage,
+        material=material,
+        printer=printer,
+        thickness_mm=thickness_mm,
+        fit_arc=fit_arc,
+        target_excursion_deg=target_excursion_deg,
+    )
+    include = tuple(s.strip() for s in solvers.split(",") if s.strip())
+    measured = read_path_csv(measured_csv) if measured_csv is not None else None
+
+    if "fea" in include:
+        console.print(f"solving {steps} states with the beam FEA; this takes a few seconds")
+    scene = build_scene(mech, n_steps=steps, measured=measured, include=include)
+
+    path = write_html(scene, html_out, min_flexure_mm=min_flexure_mm)
+    size_kb = path.stat().st_size / 1024.0
+
+    table = Table(title=f"{scene.name} viewer", show_header=False, box=None)
+    table.add_row("states", str(scene.n_frames))
+    table.add_row("models", ", ".join(scene.models))
+    table.add_row(
+        "input arc (deg)",
+        f"{scene.input_angles_deg[0]:.2f} -> {scene.input_angles_deg[-1]:.2f}",
+    )
+    for comparison in scene.comparisons:
+        mean = comparison["mean_mm"]
+        table.add_row(
+            f"{comparison['a']} vs {comparison['b']} (mm)",
+            ("mean -" if mean is None else f"mean {mean:.3f}")
+            + f", Frechet {comparison['frechet_mm']:.3f}",
+        )
+    table.add_row("file", f"{path} ({size_kb:.0f} kB)")
+    console.print(table)
+
+    for note in scene.notes:
+        console.print(f"[dim]{note}[/]")
+    caveat = scene.caveat
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
+
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(
+            json.dumps(scene.to_dict(), indent=2, default=str) + "\n", encoding="utf-8"
+        )
+        console.print(f"wrote {json_out}")
+
+
+@app.command(name="figures")
+def figures_cmd(
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("docs/figures"),
+    designs: Annotated[
+        str | None,
+        typer.Option(help="Comma-separated linkage JSON files; default is the three pilots"),
+    ] = None,
+    steps: Annotated[int, typer.Option(help="States per design across the input arc")] = 41,
+    measured_csv: Annotated[
+        Path | None, typer.Option("--measured", help="Tracked coupler path CSV")
+    ] = None,
+    torque_csv: Annotated[
+        Path | None, typer.Option("--torque", help="Filled-in torque measurement template")
+    ] = None,
+    uncertainty_json: Annotated[
+        Path | None,
+        typer.Option("--uncertainty", help="Report from 'cmtool uncertainty --json'"),
+    ] = None,
+    only: Annotated[
+        str | None, typer.Option(help="Comma-separated figure names; default is all of them")
+    ] = None,
+    theme: Annotated[str, typer.Option(help="light or dark")] = "light",
+    formats: Annotated[str, typer.Option(help="Comma-separated: png, svg, pdf")] = "png",
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
+) -> None:
+    """Regenerate every README and paper figure in one command.
+
+    Figures whose measurements do not exist yet are drawn without that series and
+    labelled, or skipped with a reason -- never filled in with a stand-in. Pass
+    --measured, --torque and --uncertainty as those measurements arrive and the
+    same command produces the finished set.
+    """
+    from cmtool.viz.figures import DEFAULT_DESIGNS, build_inputs, generate_all
+
+    sources = (
+        tuple(d.strip() for d in designs.split(",") if d.strip()) if designs else DEFAULT_DESIGNS
+    )
+    suffixes = tuple(f.strip().lstrip(".") for f in formats.split(",") if f.strip())
+    wanted = tuple(n.strip() for n in only.split(",") if n.strip()) if only else None
+
+    console.print(
+        f"solving {len(sources)} design(s) x {steps} states with the beam FEA; "
+        "this takes a few seconds each"
+    )
+    inputs = build_inputs(
+        sources,
+        n_steps=steps,
+        measured_csv=measured_csv,
+        torque_csv=torque_csv,
+        uncertainty_json=uncertainty_json,
+        material=material,
+        printer=printer,
+    )
+    results = generate_all(out, inputs, theme=theme, formats=suffixes, only=wanted)
+
+    table = Table(title=f"figures -> {out}")
+    table.add_column("figure")
+    table.add_column("status")
+    table.add_column("note")
+    for result in results:
+        if result.produced:
+            status = "[green]written[/]"
+            note = "missing: " + ", ".join(result.missing) if result.missing else ""
+        else:
+            status = "[yellow]skipped[/]"
+            note = result.reason or ""
+        table.add_row(result.name, status, note)
+    console.print(table)
+    console.print(f"manifest: {Path(out) / 'figures.json'}")
+
+    caveat = inputs.provenance.caveat()
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
+
+
 @app.command(name="prbm-study")
 def prbm_study_cmd(
     json_out: Annotated[Path | None, typer.Option("--json", help="Write the report")] = None,

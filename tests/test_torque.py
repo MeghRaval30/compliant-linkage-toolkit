@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import itertools
 
 import numpy as np
 import pytest
@@ -368,3 +369,89 @@ class TestDeadWeightRig:
     def test_hysteresis_is_labelled_as_including_rig_friction(self):
         payload = compare([], {}).to_dict()
         assert "rig friction" in payload["hysteresis_note"]
+
+
+@pytest.fixture(scope="module")
+def captured(mechanism):
+    from cmtool.solvers.beam_fea import solve_with_shape
+
+    angles = np.radians(np.linspace(88.0, 102.0, 11))
+    return solve_with_shape(mechanism, angles)
+
+
+class TestDeformedShapeCapture:
+    """The geometry a viewer draws has to be the geometry the solver solved."""
+
+    def test_capturing_the_shape_does_not_change_the_solution(self, captured, results):
+        """Recording geometry must be a side effect, not a different solve."""
+        _, plain = results
+        with_shape, _ = captured
+        np.testing.assert_allclose(with_shape.path(), plain.path(), atol=1e-12)
+        np.testing.assert_allclose(with_shape.input_torque_nmm, plain.input_torque_nmm, atol=1e-12)
+
+    def test_is_off_by_default(self, mechanism):
+        """A Phase B batch would otherwise carry geometry it immediately discards."""
+        from cmtool.solvers.beam_fea import BeamFeaSolver
+
+        angles = np.radians(np.linspace(88.0, 92.0, 3))
+        _, shape = BeamFeaSolver().solve_with_shape(
+            mechanism.base, angles, mechanism=mechanism, capture_shape=False
+        )
+        assert shape is None
+
+    def test_has_one_node_set_per_state(self, captured):
+        result, shape = captured
+        assert shape.n_states == result.n_states
+        assert shape.nodes_mm.shape == (result.n_states, result.diagnostics["n_nodes"], 2)
+        assert shape.element_strain.shape == (result.n_states, len(shape.elements))
+
+    def test_per_element_strain_agrees_with_the_reported_flexure_strain(self, captured):
+        """Two routes to the same number: the peak element and the solver's own report."""
+        result, shape = captured
+        for joint, ids in shape.flexure_elements.items():
+            peak = shape.element_strain[:, ids].max(axis=1)
+            np.testing.assert_allclose(peak, result.flexure_strain[joint], atol=1e-12)
+
+    def test_element_thickness_recovers_what_was_meshed(self, captured, mechanism):
+        """``sqrt(12 I / A)`` is exact for a rectangle, so this is algebra, not a fit."""
+        _, shape = captured
+        for joint, ids in shape.flexure_elements.items():
+            expected = mechanism.sizing[joint].geometry.thickness_mm
+            np.testing.assert_allclose(shape.element_thickness_mm[ids], expected, rtol=1e-12)
+        for ids in shape.body_elements.values():
+            np.testing.assert_allclose(shape.element_thickness_mm[ids], 8.0, rtol=1e-12)
+
+    def test_ground_is_not_meshed(self, captured, mechanism):
+        """It is clamped, so it has no elements to bend."""
+        _, shape = captured
+        assert mechanism.base.ground not in shape.body_elements
+        assert set(shape.body_elements) == {"input", "coupler", "output"}
+
+    def test_chains_are_connected_end_to_end(self, captured):
+        """Consecutive elements share a node, or a polyline through them is a lie."""
+        _, shape = captured
+        for ids in list(shape.flexure_elements.values()) + list(shape.body_elements.values()):
+            for first, second in itertools.pairwise(ids):
+                assert shape.elements[first][1] == shape.elements[second][0]
+
+    def test_a_chain_polyline_has_one_more_point_than_elements(self, captured):
+        _, shape = captured
+        for ids in shape.flexure_elements.values():
+            assert shape.chain_polyline(0, ids).shape == (len(ids) + 1, 2)
+
+    def test_an_empty_chain_gives_an_empty_polyline(self, captured):
+        _, shape = captured
+        assert shape.chain_polyline(0, []).shape == (0, 2)
+
+
+class TestBeamSectionThickness:
+    @pytest.mark.validation
+    @pytest.mark.parametrize(
+        ("thickness", "width"), [(0.4, 6.0), (0.6, 6.0), (1.0, 3.0), (8.0, 6.0)]
+    )
+    def test_in_plane_thickness_is_exact_for_a_rectangle(self, thickness, width):
+        """``A = t w`` and ``I = w t^3 / 12`` give ``12 I / A = t^2`` identically."""
+        from cmtool.solvers.beam import BeamSection
+
+        section = BeamSection.rectangular(thickness, width, 3500.0)
+        assert section.in_plane_thickness_mm == pytest.approx(thickness, rel=1e-12)

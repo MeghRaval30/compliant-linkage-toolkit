@@ -5,8 +5,9 @@ where each model stops being valid. Every number the toolkit produces should be 
 to something written down here.
 
 > **Status.** Rigid kinematics (A1), flexure sizing and feasibility (A2), the PRBM
-> quasi-static solver (A3) and the nonlinear beam FEA (A4) are implemented and validated.
-> Camera tracking (A5) is specified here but not yet written.
+> quasi-static solver (A3), the nonlinear beam FEA (A4) and camera tracking (A5) are all
+> implemented and validated. The viewer and figure scripts draw from them (A6). What is
+> not yet done is physical: nothing has been printed or measured.
 
 ---
 
@@ -321,3 +322,53 @@ anything that claims to be a physical result.
 
 The rigid kinematic solver uses no material data at all, so its results are always
 `is_physical = True`. The rigid path is pure geometry.
+
+---
+
+## 10. Comparing two paths
+
+The project's headline number is a distance between two curves, so it is worth being
+explicit about which distance.
+
+**Pointwise, at matched input angles.** Mean, max and RMS of `|a(theta) - b(theta)|`. This
+is the honest comparison when both curves are parameterised the same way, and it is what
+the sample schema stores as `prbm_vs_fea_mean_mm` and `prbm_vs_fea_max_mm`. It requires
+matched sampling; `resample_to_angles()` exists for when the sampling differs, which it
+always does between a solver sweep and a measured take.
+
+**Discrete Frechet.** The shortest leash needed to walk both curves forward together. It
+compares curves as *shapes*, ignoring how each was sampled, which is what makes it the
+right measure against a measured path whose frames land wherever the camera caught them.
+`prbm_vs_fea_frechet_mm`.
+
+The two are kept apart rather than averaged, because a pointwise comparison of two curves
+sampled at different rates is a common way to manufacture a discrepancy that is not there.
+
+**One caveat with teeth.** The implementation is the *discrete* Frechet distance: the
+walkers stop at vertices, never partway along an edge. It therefore overstates the
+continuous distance by at most the coarser curve's vertex spacing — two parallel lines
+2 mm apart, sampled every 1 mm against every 0.1 mm, measure 2.06 mm. Curves sampled at
+**matched** angles are unaffected, since walking them in step is an admissible coupling, so
+a matched comparison never reports more than its own pointwise maximum. When there are no
+angles to match on — a measured take whose lever could not be read — the residual inflation
+is part of the reported figure and is stated as such.
+
+## 11. What the viewer and the figures may not do
+
+Drawing is where invented data is easiest to introduce and hardest to notice, so the same
+two rules apply to `cmtool.viz` as to everything else:
+
+- **A missing series is absent, never zero.** No measured curve is drawn until one exists.
+  The absence is stated in words on the figure and recorded in `figures.json`, and the Phase
+  A go/no-go figure is *skipped entirely* rather than drawn from the synthetic harness — that
+  harness validates the tracking software, not the rig.
+- **A caveat that is not true is also a misstatement.** `cmtool prbm-study` fits
+  dimensionless constants, so no config quantity reaches it and its figure carries no
+  placeholder caveat. Stamping one on would overstate the uncertainty as surely as omitting
+  one understates it.
+- **Exaggeration is labelled.** A 0.6 mm flexure beside an 8 mm link is invisible at page
+  scale, so the viewer draws flexures at a minimum on-screen width. The legend says so,
+  gives the true thickness, and a toggle turns it off.
+- **The strain colour ramp is normalised against `allowable_strain`.** While that is a
+  placeholder the ramp is a relative scale with no physical meaning, and every renderer says
+  so on the page.

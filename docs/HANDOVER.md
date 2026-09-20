@@ -1,11 +1,11 @@
-# Handover: state of the project as of 2026-09-20
+# Handover: state of the project as of 2026-09-21
 
 Written so a fresh session (or a new team member) can pick this up without reading the
 whole history. Repo: <https://github.com/MeghRaval30/compliant-linkage-toolkit>, branch
 `main`, CI green on Ubuntu + Windows × Python 3.11/3.12.
 
-**381 tests pass; lint (ruff), formatting and types (mypy) are clean.** Nine commits,
-`A0+A1` through `A5`.
+**486 tests pass; lint (ruff), formatting and types (mypy) are clean.** Ten commits,
+`A0+A1` through `A6 (software half)`.
 
 ---
 
@@ -38,9 +38,11 @@ strategies are plug-in registries.
 | A3 PRBM | done | quasi-static solver, two PRBM models, mechanism CAD |
 | A4 beam FEA | done | co-rotational beam FEA, PRBM variant study, torque rig |
 | A5 camera | done | ArUco tracking, calibration, uncertainty / go-no-go |
-| **A6 demo** | **not started** | **print, measure, film, README figures, demo video** |
+| A6 software | done | HTML viewer, figure scripts, path-distance metrics |
+| **A6 physical** | **not started** | **print, measure, film, demo video** |
 
-**Everything remaining in Phase A is physical.** No solver work blocks it.
+**Everything remaining in Phase A is physical.** No software work blocks it: the figures
+regenerate with the measured series filled in as soon as it exists.
 
 ---
 
@@ -130,7 +132,10 @@ exists.
 - **Pivot-matched placement**: without it every effective link length shifts by part of a
   flexure length and the path moves before any physics enters — a conversion artefact that
   would otherwise be mistaken for a sim-to-real gap. `placement="unmatched"` is kept so the
-  artefact can be measured (≈0.2 mm for a 4 mm flexure, scaling with length).
+  artefact can be measured, and it now has been: on `fb_02_0052`, whose flexures are
+  7.5—8.7 mm, it moves the coupler path **0.567 mm mean / 1.166 mm max** — *larger* than the
+  0.451 mm PRBM-to-FEA disagreement on the same design. It scales with flexure length, so
+  the earlier ≈0.2 mm figure was for a 4 mm flexure. See `docs/figures/conversion_artefact.png`.
 
 ### Model boundary discontinuity
 
@@ -154,10 +159,11 @@ src/cmtool/
   convert/     arc fitting, flexure sizing, feasibility, design search, limits
   cad/         coupons, mechanism CAD, printability, STEP/STL, print sheets
   materials/   materials and printers from configs, with provenance
-  metrics/     torque templates (two rigs) and model comparison
+  metrics/     torque templates (two rigs), model comparison, path distance
   vision/      ArUco layout, calibration, plane map, tracking, uncertainty, synthetic
+  viz/         scene model, one-file HTML viewer, palette, the eight figure scripts
   schema/      pydantic models; JSON Schema generated from them and CI-checked
-  dataset/ viz/   still empty — Phase B
+  dataset/     still empty — Phase B
 ```
 
 ### CLI
@@ -165,6 +171,7 @@ src/cmtool/
 ```
 cmtool info | simulate | convert | coupons | design | export
             | prbm-study | torque | markers | calibrate | track | uncertainty
+            | view | figures
 cmtool generate    # still a stub: Phase B
 ```
 
@@ -299,13 +306,65 @@ footage.**
 
 ### Software that would help, but does not block
 
-- `cmtool.viz` is empty: the overlay figure and the 3D viewer are not written yet.
+- The full PyVista 3D viewer is not written. The HTML viewer and the figures both consume
+  a `ViewerScene`, so it is a third renderer of the same data rather than new geometry work.
 - `cmtool generate` (Phase B dataset sampling) is still a stub.
 - The end-**force** PRBM constants are corroborated only in trend, not to the 2% the
   end-moment ones reach — the FEA sweep does not reach the pure-force limit.
 - Flexures are prismatic with sharp corners, matching the model exactly.
   `fillet_radius_mm` exists and defaults to **off** deliberately: let the first prints show
   where they crack before geometry and model are allowed to disagree.
+
+---
+
+## 10b. What the software side of A6 delivers
+
+Both are driven from the CLI and both were built so that nothing has to be redrawn by hand
+once the parts exist.
+
+**`cmtool view <design> --html out/view.html`** writes one self-contained file: no server,
+no install, no network, no Python on the far end. A slider steps through precomputed beam
+FEA states -- nothing is solved in the browser -- with the flexures coloured by strain, the
+rigid and PRBM outlines over them as ghosts, and all the coupler paths underneath. About
+180 kB for 41 states. A test scans the generated document for any external reference and
+fails the build over one.
+
+**`cmtool figures --out docs/figures`** regenerates every README and paper figure in one
+command, writing `figures.json` recording which inputs produced each one:
+
+| figure | needs |
+|---|---|
+| `path_overlay` | rigid / PRBM / FEA / measured paths, plus the separation panel |
+| `torque_curves` | PRBM vs FEA torque, measured readings when the CSV has them |
+| `strain` | one panel per joint against the allowable |
+| `feasibility` | both hard limits per joint, binding joint marked |
+| `design_rule` | theta_max against adjacent link length, pilots marked |
+| `conversion_artefact` | pivot-matched vs unmatched placement |
+| `prbm_variant` | gamma and K fitted across load ratios |
+| `uncertainty` | **skipped until real footage exists** |
+
+Pass `--measured`, `--torque` and `--uncertainty` as those measurements arrive.
+
+### Two things this turned up
+
+**The placement artefact is larger than the physics gap.** On `fb_02_0052` the unmatched
+placement moves the coupler path by **0.567 mm mean / 1.166 mm max**, against a PRBM-to-FEA
+disagreement of 0.451 mm mean on the same design. The handover's earlier figure of ~0.2 mm
+was for a 4 mm flexure; the pilots' flexures are 7.5-8.7 mm, and the artefact scales with
+length. Pivot matching is not a refinement -- without it the conversion artefact would be
+the dominant term in the measurement.
+
+**The beam FEA no longer needs a CAD kernel.** `_attachment_points` lived in
+`cmtool/cad/mechanism.py`, which imports cadquery at module scope, so every beam FEA run
+pulled in an OCC kernel it never used. It now lives in `cmtool/convert/placement.py` and is
+shared by the CAD, the solver and the viewer.
+
+### One correction to §9's framing
+
+The go/no-go signal, 0.46 mm, is the **PRBM-vs-FEA** disagreement. Worth stating alongside
+it that the conversion artefact above is of the same order, so a take that resolves one
+resolves the other -- and that the 0.46 mm figure itself depends on the placeholder flexure
+thickness, since stiffness goes as `t^3`. It moves if the coupon says 0.4 mm prints.
 
 ---
 
@@ -318,4 +377,9 @@ footage.**
   config hash / code commit / seed logged with every result.
 - Library-quality code: typed, documented, `pytest`, CI.
 - Bulk data (STL, video, Parquet) is **not** committed; it goes to Zenodo. Small example
-  STLs under `examples/` are whitelisted exceptions.
+  STLs under `examples/` and the README figures under `docs/figures/` are whitelisted
+  exceptions -- the figures are about 870 kB for the set and a README without them is
+  useless.
+- **Drawing follows the same two rules.** A missing measured series is absent and labelled,
+  never zero; a caveat that is not true is as much a misstatement as an invented number, so
+  the dimensionless PRBM-variant figure carries none. See `docs/physics.md` section 11.
