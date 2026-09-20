@@ -31,10 +31,12 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install project
+        # uv run below uses --no-sync, so this step is the single place the
+        # environment is defined.
         run: uv sync --python ${{ matrix.python-version }} --extra dev --extra plot --extra data --extra cad
 
       - name: Test
-        run: uv run pytest --cov=cmtool --cov-report=term-missing --cov-report=xml
+        run: uv run --no-sync pytest --cov=cmtool --cov-report=term-missing --cov-report=xml
 
   quality:
     name: lint, types and schema
@@ -51,15 +53,15 @@ jobs:
         run: uv sync --python 3.12 --extra dev --extra plot --extra data --extra cad
 
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run --no-sync ruff check src tests
 
       - name: Format check
-        run: uv run ruff format --check src tests
+        run: uv run --no-sync ruff format --check src tests
 
       - name: Type check
-        run: uv run mypy
+        run: uv run --no-sync mypy
 
       - name: Check committed JSON schemas are up to date
         run: |
-          uv run python -m cmtool.schema.export --out src/cmtool/schema/json
+          uv run --no-sync python -m cmtool.schema.export --out src/cmtool/schema/json
           git diff --exit-code -- src/cmtool/schema/json
