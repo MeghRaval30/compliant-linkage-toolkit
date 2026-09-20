@@ -1,0 +1,85 @@
+{
+  "name": "fb_01_0244",
+  "bodies": [
+    {
+      "name": "ground",
+      "is_ground": true
+    },
+    {
+      "name": "input",
+      "is_ground": false
+    },
+    {
+      "name": "coupler",
+      "is_ground": false
+    },
+    {
+      "name": "output",
+      "is_ground": false
+    }
+  ],
+  "joints": {
+    "A": {
+      "bodies": [
+        "ground",
+        "input"
+      ],
+      "xy_mm": [
+        0.0,
+        0.0
+      ],
+      "kind": "revolute"
+    },
+    "B": {
+      "bodies": [
+        "input",
+        "coupler"
+      ],
+      "xy_mm": [
+        11.785721412624655,
+        107.89255769843581
+      ],
+      "kind": "revolute"
+    },
+    "C": {
+      "bodies": [
+        "coupler",
+        "output"
+      ],
+      "xy_mm": [
+        122.22679937798691,
+        111.83624253081061
+      ],
+      "kind": "revolute"
+    },
+    "D": {
+      "bodies": [
+        "output",
+        "ground"
+      ],
+      "xy_mm": [
+        111.15143568045143,
+        0.0
+      ],
+      "kind": "revolute"
+    }
+  },
+  "outputs": {
+    "P": {
+      "body": "coupler",
+      "xy_mm": [
+        48.94897103164911,
+        120.5324254323686
+      ]
+    }
+  },
+  "input_joint": "A",
+  "input_range_deg": [
+    72.91074688125217,
+    94.62119610000217
+  ],
+  "meta": {
+    "assembly_branch": 1,
+    "reference_input_deg": 83.76597149062717
+  }
+}

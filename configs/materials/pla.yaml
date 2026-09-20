@@ -11,12 +11,16 @@
 
 name: PLA
 long_name: "Polylactic acid, FDM printed"
-# PLACEHOLDER: fill in once the spool is bought (brand + colour + lot were left blank in the brief)
 supplier:
-  brand: null          # PLACEHOLDER: replace with measured value / actual purchase
-  colour: null         # PLACEHOLDER
-  lot_id: null         # PLACEHOLDER
+  brand: "eSun"
+  brand_status: confirmed
+  # Product line matters: eSun PLA and PLA+ are different materials with different
+  # moduli and ductility. Do not treat measurements from one as applying to the other.
+  product_line: null   # PLACEHOLDER: "PLA" or "PLA+", from the spool label
+  colour: null         # PLACEHOLDER: from the spool label (pigment changes modulus measurably)
+  lot_id: null         # PLACEHOLDER: from the spool label
   spool_count: 2
+  note: "Both spools from the same lot, so Phase A and B share one material batch." 
 
 properties:
   youngs_modulus_MPa:

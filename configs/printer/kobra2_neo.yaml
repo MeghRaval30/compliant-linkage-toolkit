@@ -1,0 +1,67 @@
+# SECONDARY printer. NOT used for Phase A or Phase B parts.
+#
+# Recorded so it is available for a possible Phase C printer-comparison study.
+# Keeping Phase A/B on one machine avoids confounding printer variation with the
+# simulation-to-reality gap.
+
+name: "kobra2_neo"
+model: "Anycubic Kobra 2 Neo"
+role: "secondary"
+status: confirmed
+source: "Stated by the team."
+use: "Phase C printer-comparison study only."
+
+nozzle_diameter_mm:
+  value: 0.4
+  status: confirmed
+  source: "Stated by the team."
+layer_height_mm:
+  value: 0.2
+  status: confirmed
+  source: "Stated by the team."
+
+bed:
+  design_envelope_mm:
+    value: [180.0, 180.0]
+    status: confirmed
+    source: "Same envelope as the A1, so parts are interchangeable between printers."
+  shape: "rectangular"
+  machine_size_mm:
+    value: null
+    provisional_value: [220.0, 220.0]
+    status: placeholder
+    source: "Recalled manufacturer figure, not verified. NOT a measurement."
+    note: "PLACEHOLDER: confirm from the printer or the manufacturer specification page."
+
+design_rules:
+  # Inherited from the primary printer so that a part designed for one prints on the
+  # other unchanged. Any Phase C comparison must re-measure these on this machine.
+  min_flexure_thickness_mm:
+    value: null
+    provisional_value: 0.6
+    status: placeholder
+    note: "PLACEHOLDER: this printer has not been characterised. Re-run the flexure coupon here before any Phase C comparison."
+  min_link_width_mm:
+    value: 3.0
+    status: design_choice
+  part_thickness_mm:
+    value: 6.0
+    status: design_choice
+  min_feature_clearance_mm:
+    value: 0.4
+    status: design_choice
+
+orientation:
+  mechanism_plane: "parallel_to_bed"
+  status: confirmed
+
+slicer:
+  target: "generic (Cura / PrusaSlicer / OrcaSlicer)"
+  status: design_choice
+  settings:
+    wall_generator:
+      value: "Arachne"
+      why: "Same reasoning as the A1: required for sub-2-perimeter flexures."
+    sparse_infill_density_percent:
+      value: 100
+      why: "Uniform density so rigid links are rigid."

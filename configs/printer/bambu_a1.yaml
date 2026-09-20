@@ -1,0 +1,115 @@
+# PRIMARY printer for Phase A and Phase B.
+#
+# All Phase A and B parts are printed on this machine only, deliberately, so that
+# printer-to-printer variation is not confounded with the simulation-to-reality
+# gap being measured. The secondary printer (kobra2_neo.yaml) is reserved for a
+# possible Phase C printer-comparison study.
+
+name: "bambu_a1"
+model: "Bambu Lab A1"
+role: "primary"
+status: confirmed
+source: "Stated by the team."
+
+nozzle_diameter_mm:
+  value: 0.4
+  status: confirmed
+  source: "Stated by the team."
+layer_height_mm:
+  value: 0.2
+  status: confirmed
+  source: "Stated by the team."
+
+bed:
+  # The DESIGN ENVELOPE is what cmtool checks against, and it is a team decision:
+  # 180 x 180 mm so that every part fits both printers unchanged.
+  design_envelope_mm:
+    value: [180.0, 180.0]
+    status: confirmed
+    source: "Team decision: parts must fit both the A1 and the Kobra 2 Neo."
+  shape: "rectangular"
+  # The machine's own bed size is not used by the toolkit; recorded for reference
+  # only and NOT verified against the machine.
+  machine_size_mm:
+    value: null
+    provisional_value: [256.0, 256.0]
+    status: placeholder
+    source: "Recalled manufacturer figure, not verified. NOT a measurement."
+    note: "PLACEHOLDER: confirm from the printer or the manufacturer specification page."
+
+design_rules:
+  min_flexure_thickness_mm:
+    value: null
+    provisional_value: 0.6
+    status: placeholder
+    source: "1.5x nozzle diameter as a starting guess. NOT a measured print limit."
+    note: |
+      PLACEHOLDER: set from the A2 flexure test coupon (strips at 0.4/0.5/0.6/0.8/1.0 mm).
+      The measured limit is the thinnest strip that prints with consistent, measurable
+      thickness and survives handling. Until then any feasibility verdict that depends
+      on this value is flagged non-physical.
+  min_link_width_mm:
+    value: 3.0
+    status: design_choice
+    source: "Keeps rigid links stiff relative to flexures, which PRBM validity requires."
+  part_thickness_mm:
+    value: 6.0
+    status: design_choice
+    source: |
+      Out-of-plane depth. Gives I_out/I_in = (w/t)^2 ~ 100 at t = 0.6 mm, so the part is
+      far stiffer out of plane than in it -- this is what makes the planar assumption
+      hold. See docs/physics.md section 7.
+  min_feature_clearance_mm:
+    value: 0.4
+    status: design_choice
+    source: "One nozzle width, so adjacent features do not fuse."
+
+orientation:
+  mechanism_plane: "parallel_to_bed"
+  status: confirmed
+  source: "Stated by the team."
+  note: "Flexures bend in-plane, so inter-layer bonds are not loaded in tension."
+
+# Slicer guidance for Bambu Studio. These are DESIGN CHOICES aimed at printing thin
+# flexures consistently, not measurements. Verify the exact setting names in your
+# Bambu Studio version; names drift between releases.
+slicer:
+  target: "Bambu Studio"
+  status: design_choice
+  settings:
+    wall_generator:
+      value: "Arachne"
+      why: |
+        Arachne varies extrusion width to fill thin features exactly. The classic
+        generator works in whole-nozzle-width perimeters and will thin, distort or drop
+        a sub-2-perimeter wall -- exactly the 0.4-0.6 mm flexures this project depends on.
+        This is the single most important setting here.
+    wall_loops:
+      value: 4
+      why: "Enough perimeters that rigid links are genuinely solid; flexures are thinner than this and become a single variable-width wall."
+    sparse_infill_density_percent:
+      value: 100
+      why: |
+        Rigid links must be rigid, and density must be uniform for the modulus measured on
+        a coupon to apply to a mechanism. Sparse infill makes 'rigid' links compliant and
+        introduces a second unmeasured variable.
+    detect_thin_wall:
+      value: true
+      why: "Prevents narrow regions being skipped entirely."
+    seam_position:
+      value: "aligned, placed away from flexures"
+      why: "A layer seam on a flexure is a stress concentrator and a crack initiation site."
+    outer_wall_speed_mm_per_s:
+      value: 30
+      why: "Slower outer walls improve dimensional accuracy on thin features. Reduce further if 0.4-0.5 mm strips come out inconsistent."
+    nozzle_temperature_c:
+      value: null
+      status: placeholder
+      note: "PLACEHOLDER: use the filament vendor's recommendation for the actual spool, and log it in the print metadata."
+    bed_temperature_c:
+      value: null
+      status: placeholder
+      note: "PLACEHOLDER: as above."
+    supports:
+      value: false
+      why: "Parts are designed flat with the mechanism plane on the bed; support material on a flexure would ruin its surface."

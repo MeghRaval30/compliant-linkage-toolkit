@@ -6,9 +6,13 @@ Everything here is deliberately small and solver-agnostic::
     result = simulate(mech, solver="rigid", input_range_deg=(30, 80))
     result.path()
 
-Later phases add ``convert(...)`` (rigid -> compliant) and further solver names;
-the shapes of :func:`simulate` and :class:`~cmtool.solvers.base.SimulationResult`
-do not change when they do.
+``convert(...)`` turns a rigid linkage into a compliant one::
+
+    cm = convert(mech, material="PLA", printer="bambu_a1")
+    cm.feasibility.binding_joint
+
+Further solver names arrive in A3/A4; the shapes of :func:`simulate` and
+:class:`~cmtool.solvers.base.SimulationResult` do not change when they do.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from cmtool.convert.base import STRATEGIES, CompliantMechanism
 from cmtool.core.graph import Linkage
 from cmtool.core.units import FloatArray
 from cmtool.solvers.base import SOLVERS, SimulationResult
@@ -85,6 +90,83 @@ def simulate(
     return engine.solve(linkage, angles, **solver_kwargs)
 
 
+def convert(
+    linkage: Linkage,
+    *,
+    flexures: str | dict[str, str] = "small_length_pivot",
+    material: str = "PLA",
+    printer: str = "bambu_a1",
+    strategy: str = "naive",
+    **options: Any,
+) -> CompliantMechanism:
+    """Convert a rigid linkage into a compliant (flexure-based) mechanism.
+
+    Parameters
+    ----------
+    linkage
+        The rigid mechanism.
+    flexures
+        A flexure type name for every joint, or a per-joint mapping. Mixed
+        flexure types arrive with the notch and cross-axis pivots in Phase B; for
+        now a mapping must name one type.
+    material, printer
+        Config names under ``configs/``. Every physical number used comes from
+        those files, with provenance.
+    strategy
+        Registered design strategy. ``"naive"`` sizes each flexure to the
+        shortest length that survives its bend.
+    **options
+        Passed to the strategy: ``placement``, ``unstressed_at``,
+        ``input_range_deg``, ``thickness_mm``, ``flexure_length_mm``, ...
+
+    Returns
+    -------
+    CompliantMechanism
+        Check ``result.feasibility.feasible`` and, when it is ``False``,
+        ``result.feasibility.binding_joint`` and ``.reasons()``.
+
+    Notes
+    -----
+    Conversion always reads material and printer data, and those values are
+    currently placeholders, so the result will report ``is_physical = False``
+    until the coupon and modulus tests replace them.
+    """
+    engine = STRATEGIES.get(strategy)
+    flexure_type = _sole_flexure_type(flexures)
+    return engine.convert(
+        linkage,
+        flexure_type=flexure_type,
+        material=material,
+        printer=printer,
+        **options,
+    )
+
+
+def _sole_flexure_type(flexures: str | dict[str, str]) -> str:
+    """Return the single flexure type named, or explain why a mapping is not yet allowed."""
+    if isinstance(flexures, str):
+        return flexures
+    distinct = set(flexures.values())
+    if len(distinct) == 1:
+        return distinct.pop()
+    raise NotImplementedError(
+        f"mixed flexure types per joint are not implemented yet (got {sorted(distinct)}); "
+        "the notch and cross-axis pivots arrive in Phase B"
+    )
+
+
 def available_solvers() -> list[str]:
     """Return the names of all registered solvers."""
     return SOLVERS.names()
+
+
+def available_flexures() -> list[str]:
+    """Return the names of all registered flexure types."""
+    from cmtool.flexures import FLEXURES
+
+    return FLEXURES.names()
+
+
+def available_strategies() -> list[str]:
+    """Return the names of all registered design strategies."""
+    return STRATEGIES.names()

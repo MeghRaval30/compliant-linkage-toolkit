@@ -3,7 +3,10 @@
 Batch work goes through this CLI so that runs are scriptable and logged::
 
     cmtool info
-    cmtool simulate examples/fourbar.json --solver rigid --steps 91 --csv out/path.csv
+    cmtool coupons --out out/coupons
+    cmtool design --seed 1 --out out/designs
+    cmtool convert out/designs/fb_01_0077.json
+    cmtool simulate examples/fourbar.json --steps 91 --csv out/path.csv
 
 Subcommands belonging to later milestones are present but refuse to run, naming
 the milestone, so the CLI surface is visible from the start without pretending
@@ -43,14 +46,16 @@ def _not_yet(milestone: str, what: str) -> None:
 @app.command()
 def info() -> None:
     """Show version, registered plug-ins and the current code commit."""
+    from cmtool.api import available_flexures, available_strategies
+    from cmtool.kinematics import KINEMATICS
+
     table = Table(title="cmtool", show_header=False, box=None)
     table.add_row("version", __version__)
     table.add_row("code commit", git_commit())
     table.add_row("solvers", ", ".join(available_solvers()))
-
-    from cmtool.kinematics import KINEMATICS
-
     table.add_row("kinematics", ", ".join(KINEMATICS.names()))
+    table.add_row("flexures", ", ".join(available_flexures()))
+    table.add_row("strategies", ", ".join(available_strategies()))
     console.print(table)
 
 
@@ -120,22 +125,282 @@ def simulate_cmd(
         console.print(f"wrote {json_out}")
 
 
+@app.command(name="convert")
+def convert_cmd(
+    linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+    flexure: Annotated[str, typer.Option(help="Registered flexure type")] = "small_length_pivot",
+    thickness_mm: Annotated[
+        float | None, typer.Option(help="Flexure thickness; default is the printer minimum")
+    ] = None,
+    fit_arc: Annotated[
+        bool, typer.Option(help="Shrink the input arc to meet the excursion target")
+    ] = True,
+    target_excursion_deg: Annotated[
+        float, typer.Option(help="Ceiling for the worst joint excursion")
+    ] = 22.0,
+    unstressed_at: Annotated[
+        str, typer.Option(help="Which configuration is printed: mid_arc or start")
+    ] = "mid_arc",
+    placement: Annotated[str, typer.Option(help="pivot_matched or unmatched")] = "pivot_matched",
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Write the report to JSON")
+    ] = None,
+) -> None:
+    """Convert a rigid linkage into a compliant one and report per-joint feasibility."""
+    from cmtool.api import convert as convert_api
+    from cmtool.convert.arc import ArcFitError, fit_input_arc
+
+    linkage = Linkage.from_json(linkage_json)
+
+    arc = linkage.input_range_deg
+    if fit_arc:
+        try:
+            fit = fit_input_arc(linkage, max_joint_excursion_deg=target_excursion_deg)
+        except ArcFitError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from exc
+        arc = fit.input_range_deg
+        console.print(
+            f"fitted input arc {arc[0]:.2f} -> {arc[1]:.2f} deg "
+            f"({fit.input_excursion_deg:.2f} deg of input; worst joint "
+            f"{fit.binding_joint} at {fit.max_excursion_deg:.2f} deg)"
+        )
+
+    mech = convert_api(
+        linkage,
+        flexures=flexure,
+        material=material,
+        printer=printer,
+        input_range_deg=arc,
+        thickness_mm=thickness_mm,
+        unstressed_at=unstressed_at,
+        placement=placement,
+    )
+
+    table = Table(title=f"{linkage.name} -> compliant [{mech.flexure_type}]")
+    table.add_column("joint")
+    for column in (
+        "excursion",
+        "max bend",
+        "L chosen",
+        "L strain min",
+        "L prbm max",
+        "peak strain",
+        "util",
+    ):
+        table.add_column(column, justify="right")
+    table.add_column("ok")
+
+    for name, sized in mech.sizing.items():
+        table.add_row(
+            name,
+            f"{sized.excursion_deg:.2f}",
+            f"{sized.max_bend_deg:.2f}",
+            f"{sized.geometry.length_mm:.2f}",
+            f"{sized.min_length_strain_mm:.2f}",
+            f"{sized.max_length_prbm_mm:.2f}",
+            f"{sized.strain.peak_strain:.5f}",
+            f"{sized.utilisation:.2f}",
+            "[green]yes[/]" if sized.feasible else "[red]NO[/]",
+        )
+    console.print(table)
+
+    report = mech.feasibility
+    verdict = "[green]FEASIBLE[/]" if report.feasible else "[red]NOT FEASIBLE[/]"
+    console.print(
+        f"{verdict}  limiting joint: [bold]{report.binding_joint}[/] "
+        f"(utilisation {report.max_utilisation:.2f})"
+    )
+    for reason in report.reasons():
+        console.print(f"  [red]{reason}[/]")
+
+    caveat = mech.provenance.caveat()
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
+
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        payload = mech.summary()
+        payload["provenance"] = mech.provenance.to_dict()
+        json_out.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+        console.print(f"wrote {json_out}")
+
+
 @app.command()
-def convert() -> None:
-    """Convert a rigid linkage into a compliant one (milestone A2)."""
-    _not_yet("A2", "conversion")
+def coupons(
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/coupons"),
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+) -> None:
+    """Export the flexure and cantilever test coupons, with print sheets.
+
+    These are printed before any mechanism: they measure the minimum printable
+    flexure thickness and the material modulus that every later design needs.
+    """
+    from cmtool.cad import CouponSet, check_printability, export_solid, write_print_sheet
+    from cmtool.materials import Material, Printer
+
+    printer_cfg = Printer.load(printer)
+    material_cfg = Material.load(material)
+    coupon_set = CouponSet()
+    solids = coupon_set.build()
+    meta = coupon_set.metadata()
+
+    purposes = {
+        "flexure_coupon": (
+            "Find the minimum flexure thickness this printer can produce consistently. "
+            "Print it, measure every strip with calipers, then bend each one by hand. The "
+            "thinnest strip that prints completely, measures close to nominal and survives "
+            "handling sets `min_flexure_thickness_mm` in the printer config. Until that "
+            "number is measured, every feasibility verdict the toolkit produces is flagged "
+            "as not a physical prediction."
+        ),
+        "cantilever_coupon": (
+            "Measure the effective Young's modulus of the printed material by cantilever "
+            "deflection. Two thicknesses are included deliberately: a 1 mm strip is almost "
+            "entirely perimeter while a 2 mm strip contains infill, so comparing them shows "
+            "whether apparent modulus depends on wall structure. If it does, a modulus "
+            "measured on a thick strip cannot be applied to a 0.5 mm flexure unchanged."
+        ),
+    }
+    instructions = {
+        "flexure_coupon": [
+            "Print flat on the bed with the settings in the table above. No supports.",
+            "Photograph the plate before touching it, and note any strip that failed to print.",
+            "Measure each strip's thickness with calipers at three points along its length.",
+            "Record nominal against measured thickness, and the spread across those points.",
+            "Bend each paddle by hand through roughly 20 degrees and back, ten times.",
+            "Record which strips survive, which whiten, and which break.",
+            "Set `min_flexure_thickness_mm` in configs/printer/bambu_a1.yaml from the result, "
+            "with `status: measured` and the date.",
+        ],
+        "cantilever_coupon": [
+            "Print flat on the bed. Keep all six strips from a single print job.",
+            "Measure each strip's thickness and width with calipers and record them separately.",
+            "Clamp one end with a known free length (about 80 mm) and record that length.",
+            "Hang a known mass at the tip and measure tip deflection, using at least three masses.",
+            "Keep deflections small, under about 10 percent of the free length, so linear beam "
+            "theory applies.",
+            "Compute E = F L^3 / (3 delta I) with I = b h^3 / 12, using the MEASURED b and h.",
+            "Record the loading rate and how long each load was held: PLA creeps, so the "
+            "modulus depends on both.",
+            "Put the result in configs/materials/pla.yaml with `status: measured`, plus the "
+            "date, the rate and the orientation.",
+        ],
+    }
+
+    for stem, solid in solids.items():
+        min_feature = (
+            min(coupon_set.flexure_spec.thicknesses_mm) if stem == "flexure_coupon" else None
+        )
+        check = check_printability(
+            solid,
+            printer_cfg,
+            min_feature_mm=min_feature,
+            allow_below_minimum=(stem == "flexure_coupon"),
+        )
+        paths = export_solid(solid, out, stem)
+        sheet = write_print_sheet(
+            Path(out) / f"{stem}_print_sheet.md",
+            title=stem.replace("_", " "),
+            printer=printer_cfg,
+            material=material_cfg,
+            purpose=purposes[stem],
+            check=check,
+            details=meta[stem],
+            instructions=instructions[stem],
+        )
+        status = "[green]OK[/]" if check.ok else "[red]FAILED[/]"
+        size = check.bounding_box_mm
+        console.print(
+            f"{stem}: {status}  {size[0]:.0f} x {size[1]:.0f} x {size[2]:.0f} mm  "
+            f"-> {paths['step'].name}, {paths['stl'].name}, {sheet.name}"
+        )
+        for note in check.notes:
+            console.print(f"    [yellow]{note}[/]")
+
+    meta_path = Path(out) / "coupons.json"
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    console.print(f"wrote {meta_path}")
+
+
+@app.command()
+def design(
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/designs"),
+    seed: Annotated[int, typer.Option(help="Random seed")] = 1,
+    candidates: Annotated[int, typer.Option(help="Candidates to sample")] = 250,
+    keep: Annotated[int, typer.Option(help="Designs to keep")] = 3,
+    target_excursion_deg: Annotated[
+        float, typer.Option(help="Ceiling for the worst joint excursion")
+    ] = 22.0,
+    thickness_mm: Annotated[float | None, typer.Option(help="Flexure thickness")] = None,
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+) -> None:
+    """Search for four-bar designs that are feasible as compliant mechanisms."""
+    from cmtool.convert.search import search
+    from cmtool.materials import Printer
+
+    envelope = Printer.load(printer).design_envelope_mm()
+    report = search(
+        n_candidates=candidates,
+        seed=seed,
+        keep=keep,
+        max_joint_excursion_deg=target_excursion_deg,
+        envelope_mm=envelope,
+        thickness_mm=thickness_mm,
+        printer=printer,
+    )
+
+    console.print(
+        f"sampling links from {report.link_floor_mm:.1f} mm upward: the closed-form bound "
+        f"for {target_excursion_deg:.0f} deg of joint excursion"
+    )
+
+    tally = Table(title="rejections")
+    tally.add_column("reason")
+    tally.add_column("count", justify="right")
+    for reason, count in sorted(report.reasons.items(), key=lambda kv: -kv[1]):
+        tally.add_row(reason, str(count))
+    console.print(tally)
+
+    if not report.kept:
+        console.print("[red]no feasible designs found[/]")
+        raise typer.Exit(code=1)
+
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "search_report.json").write_text(
+        json.dumps(report.to_dict(), indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    for candidate in report.kept:
+        mech = candidate.compliant
+        assert mech is not None and candidate.arc_deg is not None
+        linkage = candidate.linkage
+        linkage.input_range_deg = candidate.arc_deg
+        linkage.to_json(out / f"{linkage.name}.json")
+        (out / f"{linkage.name}_report.json").write_text(
+            json.dumps(candidate.summary(), indent=2, default=str) + "\n", encoding="utf-8"
+        )
+        worst = max(candidate.excursions_deg, key=lambda k: candidate.excursions_deg[k])
+        console.print(
+            f"[green]{linkage.name}[/]: arc "
+            f"{candidate.arc_deg[0]:.1f}..{candidate.arc_deg[1]:.1f} deg, worst joint "
+            f"{worst} at {candidate.excursions_deg[worst]:.1f} deg, limiting joint "
+            f"{mech.feasibility.binding_joint} (util {mech.feasibility.max_utilisation:.2f})"
+        )
 
 
 @app.command()
 def generate() -> None:
-    """Generate random feasible linkage samples (Phase B)."""
-    _not_yet("B", "sample generation")
+    """Generate random feasible linkage samples for the dataset (Phase B)."""
+    _not_yet("B", "dataset sample generation")
 
 
 @app.command()
 def export() -> None:
-    """Export CAD (STEP/STL) for a compliant design (milestone A2)."""
-    _not_yet("A2", "CAD export")
+    """Export CAD for a full compliant mechanism (milestone A2, in progress)."""
+    _not_yet("A2", "monolithic mechanism CAD export")
 
 
 @app.command()

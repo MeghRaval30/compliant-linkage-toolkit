@@ -1,0 +1,338 @@
+{
+  "seed": 1,
+  "n_candidates": 250,
+  "link_floor_mm": 86.3937979737193,
+  "n_kept": 3,
+  "n_rejected": 165,
+  "reasons": {
+    "footprint": 124,
+    "does_not_assemble": 7,
+    "flexure_infeasible_C": 8,
+    "flexure_infeasible_B": 9,
+    "transmission_angle": 12,
+    "flexure_infeasible_D": 5
+  },
+  "kept": [
+    {
+      "name": "fb_01_0244",
+      "ok": true,
+      "rejected": null,
+      "rejected_code": null,
+      "arc_deg": [
+        72.91074688125217,
+        94.62119610000217
+      ],
+      "excursions_deg": {
+        "A": 21.71,
+        "B": 21.932,
+        "C": 21.149,
+        "D": 20.927
+      },
+      "footprint_mm": [
+        151.06882412260225,
+        121.14151905172969
+      ],
+      "transmission_range_deg": [
+        71.7,
+        92.85
+      ],
+      "feasibility": {
+        "feasible": true,
+        "binding_joint": "B",
+        "max_utilisation": 0.7963149765482821,
+        "allowable_strain": 0.01,
+        "strain_safety_factor": 1.5,
+        "prbm_length_ratio_limit": 0.1,
+        "joints": {
+          "A": {
+            "joint": "A",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.525673471469906,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.855224609374996,
+            "excursion_deg": 21.710449218749993,
+            "peak_strain": 0.006666666666666666,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.525673471469906,
+            "max_length_prbm_mm": 10.853435970201465,
+            "prbm_length_ratio": 0.07855275965028474,
+            "stiffness_nmm_per_rad": 44.33667337424186,
+            "utilisation": 0.7855275965028473,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "B": {
+            "joint": "B",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.64275361007926,
+            "width_mm": 6.0,
+            "max_bend_deg": 11.004295671755504,
+            "excursion_deg": 21.932099313684944,
+            "peak_strain": 0.006666666666666666,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.64275361007926,
+            "max_length_prbm_mm": 10.853435970201465,
+            "prbm_length_ratio": 0.07963149765482821,
+            "stiffness_nmm_per_rad": 43.73606110431897,
+            "utilisation": 0.7963149765482821,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "C": {
+            "joint": "C",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.32315636428589,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.597371820022937,
+            "excursion_deg": 21.149065696759457,
+            "peak_strain": 0.006666666666666666,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.32315636428589,
+            "max_length_prbm_mm": 11.051146706205799,
+            "prbm_length_ratio": 0.07531486628090821,
+            "stiffness_nmm_per_rad": 45.41546301136103,
+            "utilisation": 0.7531486628090821,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "D": {
+            "joint": "D",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.230277552651541,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.479114844182078,
+            "excursion_deg": 20.92741560182451,
+            "peak_strain": 0.006666666666666666,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.230277552651541,
+            "max_length_prbm_mm": 11.115143568045143,
+            "prbm_length_ratio": 0.07404562525231537,
+            "stiffness_nmm_per_rad": 45.92797722577655,
+            "utilisation": 0.7404562525231536,
+            "feasible": true,
+            "limit_reason": null
+          }
+        },
+        "reasons": []
+      }
+    },
+    {
+      "name": "fb_01_0019",
+      "ok": true,
+      "rejected": null,
+      "rejected_code": null,
+      "arc_deg": [
+        79.74655630538089,
+        100.31760122725589
+      ],
+      "excursions_deg": {
+        "A": 20.571,
+        "B": 20.713,
+        "C": 21.999,
+        "D": 21.856
+      },
+      "footprint_mm": [
+        152.0670433809411,
+        142.43361995872402
+      ],
+      "transmission_range_deg": [
+        82.83,
+        104.83
+      ],
+      "feasibility": {
+        "feasible": true,
+        "binding_joint": "C",
+        "max_utilisation": 0.8166542998107601,
+        "allowable_strain": 0.01,
+        "strain_safety_factor": 1.5,
+        "prbm_length_ratio_limit": 0.1,
+        "joints": {
+          "A": {
+            "joint": "A",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.078230450403524,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.28552246093751,
+            "excursion_deg": 20.57104492187502,
+            "peak_strain": 0.006666666666666666,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.078230450403524,
+            "max_length_prbm_mm": 11.242731739448022,
+            "prbm_length_ratio": 0.07185291473298229,
+            "stiffness_nmm_per_rad": 46.79242593049795,
+            "utilisation": 0.7185291473298229,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "B": {
+            "joint": "B",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.180463649884976,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.415689813302096,
+            "excursion_deg": 20.713352490533673,
+            "peak_strain": 0.006666666666666667,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.180463649884976,
+            "max_length_prbm_mm": 11.190992859504362,
+            "prbm_length_ratio": 0.07309864059950155,
+            "stiffness_nmm_per_rad": 46.20764985677981,
+            "utilisation": 0.7309864059950155,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "C": {
+            "joint": "C",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.693798554363388,
+            "width_mm": 6.0,
+            "max_bend_deg": 11.069288113376858,
+            "excursion_deg": 21.99880159842238,
+            "peak_strain": 0.006666666666666668,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.693798554363388,
+            "max_length_prbm_mm": 10.64562882529115,
+            "prbm_length_ratio": 0.08166542998107601,
+            "stiffness_nmm_per_rad": 43.4792683125011,
+            "utilisation": 0.8166542998107601,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "D": {
+            "joint": "D",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.591565354881936,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.939120761012273,
+            "excursion_deg": 21.856494029763727,
+            "peak_strain": 0.006666666666666666,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.591565354881936,
+            "max_length_prbm_mm": 10.64562882529115,
+            "prbm_length_ratio": 0.08070509967875913,
+            "stiffness_nmm_per_rad": 43.99663907406712,
+            "utilisation": 0.8070509967875913,
+            "feasible": true,
+            "limit_reason": null
+          }
+        },
+        "reasons": []
+      }
+    },
+    {
+      "name": "fb_01_0075",
+      "ok": true,
+      "rejected": null,
+      "rejected_code": null,
+      "arc_deg": [
+        89.24792228489962,
+        109.99426017552462
+      ],
+      "excursions_deg": {
+        "A": 20.746,
+        "B": 20.55,
+        "C": 21.802,
+        "D": 21.998
+      },
+      "footprint_mm": [
+        140.7790224226556,
+        124.29803776702045
+      ],
+      "transmission_range_deg": [
+        91.57,
+        113.38
+      ],
+      "feasibility": {
+        "feasible": true,
+        "binding_joint": "D",
+        "max_utilisation": 0.8616175564428272,
+        "allowable_strain": 0.01,
+        "strain_safety_factor": 1.5,
+        "prbm_length_ratio_limit": 0.1,
+        "joints": {
+          "A": {
+            "joint": "A",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.147067838259883,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.373168945312502,
+            "excursion_deg": 20.74633789062498,
+            "peak_strain": 0.006666666666666668,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.147067838259883,
+            "max_length_prbm_mm": 10.105359060240929,
+            "prbm_length_ratio": 0.08062126035990298,
+            "stiffness_nmm_per_rad": 46.397060574953585,
+            "utilisation": 0.8062126035990297,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "B": {
+            "joint": "B",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.11559541287565,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.333097008744566,
+            "excursion_deg": 20.550173790081782,
+            "peak_strain": 0.006666666666666666,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.11559541287565,
+            "max_length_prbm_mm": 10.315801981781398,
+            "prbm_length_ratio": 0.0786714927953105,
+            "stiffness_nmm_per_rad": 46.576989212681916,
+            "utilisation": 0.7867149279531049,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "C": {
+            "joint": "C",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.610253604569195,
+            "width_mm": 6.0,
+            "max_bend_deg": 10.962915379535977,
+            "excursion_deg": 21.80180373006121,
+            "peak_strain": 0.006666666666666667,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.610253604569195,
+            "max_length_prbm_mm": 10.02965406790296,
+            "prbm_length_ratio": 0.0858479619164917,
+            "stiffness_nmm_per_rad": 43.90114593133553,
+            "utilisation": 0.8584796191649171,
+            "feasible": true,
+            "limit_reason": null
+          },
+          "D": {
+            "joint": "D",
+            "type": "small_length_pivot",
+            "t_mm": 0.6,
+            "length_mm": 8.64172602995341,
+            "width_mm": 6.0,
+            "max_bend_deg": 11.002987316103887,
+            "excursion_deg": 21.99796783060438,
+            "peak_strain": 0.006666666666666667,
+            "strain_model": "leaf_uniform_bending",
+            "min_length_strain_mm": 8.64172602995341,
+            "max_length_prbm_mm": 10.02965406790296,
+            "prbm_length_ratio": 0.08616175564428272,
+            "stiffness_nmm_per_rad": 43.741261721304284,
+            "utilisation": 0.8616175564428272,
+            "feasible": true,
+            "limit_reason": null
+          }
+        },
+        "reasons": []
+      }
+    }
+  ]
+}

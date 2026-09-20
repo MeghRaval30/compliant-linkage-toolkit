@@ -7,8 +7,9 @@ name: "default"
 mount:
   # Reusable separate fixture with a bolt pattern (team decision), not monolithic.
   type: "reusable_bolted"
-  bolt_pattern: "M3"        # PLACEHOLDER: confirm fastener size actually on hand
-  status: placeholder
+  bolt_pattern: "M3"
+  status: confirmed
+  source: "Stated by the team." 
 
 fiducials:
   dictionary: "DICT_4X4_50"
