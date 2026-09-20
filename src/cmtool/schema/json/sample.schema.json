@@ -1,0 +1,1124 @@
+{
+  "$defs": {
+    "BodySpec": {
+      "additionalProperties": false,
+      "description": "One body of the rigid linkage.",
+      "properties": {
+        "is_ground": {
+          "default": false,
+          "title": "Is Ground",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "BodySpec",
+      "type": "object"
+    },
+    "CadSpec": {
+      "additionalProperties": false,
+      "description": "Exported CAD artefacts, as paths relative to the sample folder.",
+      "properties": {
+        "part_thickness_mm": {
+          "anyOf": [
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part Thickness Mm"
+        },
+        "printer_config": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Printer Config"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step"
+        },
+        "stl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stl"
+        }
+      },
+      "title": "CadSpec",
+      "type": "object"
+    },
+    "CompliantSpec": {
+      "additionalProperties": false,
+      "description": "The compliant counterpart of the rigid linkage.",
+      "properties": {
+        "cad": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CadSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "flexures": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FlexureSpec"
+          },
+          "title": "Flexures",
+          "type": "object"
+        },
+        "material": {
+          "description": "Key into configs/materials/",
+          "title": "Material",
+          "type": "string"
+        },
+        "strategy": {
+          "default": "naive",
+          "description": "Registered design strategy used",
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "flexures",
+        "material"
+      ],
+      "title": "CompliantSpec",
+      "type": "object"
+    },
+    "FeasibilitySpec": {
+      "additionalProperties": false,
+      "description": "Why a candidate sample was kept or rejected.",
+      "properties": {
+        "assembles": {
+          "title": "Assembles",
+          "type": "boolean"
+        },
+        "branch_flip": {
+          "title": "Branch Flip",
+          "type": "boolean"
+        },
+        "printable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Printable"
+        },
+        "rejected_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rejected Reasons",
+          "type": "array"
+        },
+        "strain_ok": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strain Ok"
+        },
+        "transmission_angle_ok": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transmission Angle Ok"
+        }
+      },
+      "required": [
+        "assembles",
+        "branch_flip"
+      ],
+      "title": "FeasibilitySpec",
+      "type": "object"
+    },
+    "FlexureSpec": {
+      "additionalProperties": false,
+      "description": "A flexure replacing one revolute joint.",
+      "properties": {
+        "characteristic_pivot_mm": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "description": "Length in millimetres",
+                  "type": "number"
+                },
+                {
+                  "description": "Length in millimetres",
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "World position of the PRBM characteristic pivot",
+          "title": "Characteristic Pivot Mm"
+        },
+        "length_mm": {
+          "description": "Flexure length along its neutral axis",
+          "title": "Length Mm",
+          "type": "number"
+        },
+        "pivot_offset_mm": {
+          "anyOf": [
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Distance from the characteristic pivot to the original rigid joint",
+          "title": "Pivot Offset Mm"
+        },
+        "placement": {
+          "default": "pivot_matched",
+          "description": "'pivot_matched' shifts geometry so the PRBM characteristic pivot lands on the original rigid joint. 'unmatched' does not, which introduces a systematic path offset that is a conversion artefact, not a physical gap.",
+          "enum": [
+            "pivot_matched",
+            "unmatched"
+          ],
+          "title": "Placement",
+          "type": "string"
+        },
+        "stiffness_nmm_per_rad": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PRBM torsional stiffness K, in N*mm/rad",
+          "title": "Stiffness Nmm Per Rad"
+        },
+        "t_mm": {
+          "description": "Flexure thickness (in-plane, the bending dimension)",
+          "title": "T Mm",
+          "type": "number"
+        },
+        "type": {
+          "description": "Registered flexure type, e.g. 'small_length_pivot'",
+          "title": "Type",
+          "type": "string"
+        },
+        "width_mm": {
+          "description": "Out-of-plane width (the printed depth)",
+          "title": "Width Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "type",
+        "t_mm",
+        "length_mm",
+        "width_mm"
+      ],
+      "title": "FlexureSpec",
+      "type": "object"
+    },
+    "GrashofSpec": {
+      "additionalProperties": false,
+      "description": "Grashof classification of the rigid linkage.",
+      "properties": {
+        "classification": {
+          "title": "Classification",
+          "type": "string"
+        },
+        "condition": {
+          "enum": [
+            "grashof",
+            "non_grashof",
+            "change_point"
+          ],
+          "title": "Condition",
+          "type": "string"
+        },
+        "input_fully_rotates": {
+          "description": "Whether the input link can fully rotate. A flexure cannot, so such a design has no direct compliant equivalent and must be driven over a limited arc.",
+          "title": "Input Fully Rotates",
+          "type": "boolean"
+        },
+        "p_plus_q": {
+          "title": "P Plus Q",
+          "type": "number"
+        },
+        "s_plus_l": {
+          "title": "S Plus L",
+          "type": "number"
+        },
+        "shortest": {
+          "title": "Shortest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "condition",
+        "classification",
+        "shortest",
+        "s_plus_l",
+        "p_plus_q",
+        "input_fully_rotates"
+      ],
+      "title": "GrashofSpec",
+      "type": "object"
+    },
+    "JointSpec": {
+      "additionalProperties": false,
+      "description": "One joint of the rigid linkage.",
+      "properties": {
+        "bodies": {
+          "description": "The two bodies this joint connects",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Bodies",
+          "type": "array"
+        },
+        "kind": {
+          "default": "revolute",
+          "enum": [
+            "revolute",
+            "prismatic",
+            "flexure"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "xy_mm": {
+          "description": "Position in the reference configuration",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            },
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            }
+          ],
+          "title": "Xy Mm",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bodies",
+        "xy_mm"
+      ],
+      "title": "JointSpec",
+      "type": "object"
+    },
+    "MeasuredSpec": {
+      "additionalProperties": false,
+      "description": "Measured results for one printed specimen.",
+      "properties": {
+        "metadata": {
+          "$ref": "#/$defs/PrintMetadata"
+        },
+        "path_csv": {
+          "title": "Path Csv",
+          "type": "string"
+        },
+        "specimen_id": {
+          "title": "Specimen Id",
+          "type": "string"
+        },
+        "tracking_uncertainty_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Measurement uncertainty from the A5 known-motion ground truth",
+          "title": "Tracking Uncertainty Mm"
+        }
+      },
+      "required": [
+        "specimen_id",
+        "path_csv"
+      ],
+      "title": "MeasuredSpec",
+      "type": "object"
+    },
+    "MetricsSpec": {
+      "additionalProperties": true,
+      "description": "Comparison metrics between solvers and measurement.",
+      "properties": {
+        "prbm_vs_fea_frechet_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prbm Vs Fea Frechet Mm"
+        },
+        "prbm_vs_fea_max_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prbm Vs Fea Max Mm"
+        },
+        "prbm_vs_fea_mean_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prbm Vs Fea Mean Mm"
+        },
+        "rigid_vs_fea_mean_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rigid Vs Fea Mean Mm"
+        },
+        "sim_vs_measured_frechet_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sim Vs Measured Frechet Mm"
+        },
+        "sim_vs_measured_max_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sim Vs Measured Max Mm"
+        },
+        "sim_vs_measured_mean_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sim Vs Measured Mean Mm"
+        }
+      },
+      "title": "MetricsSpec",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "description": "A tracked point rigidly attached to a body.",
+      "properties": {
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "xy_mm": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            },
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            }
+          ],
+          "title": "Xy Mm",
+          "type": "array"
+        }
+      },
+      "required": [
+        "body",
+        "xy_mm"
+      ],
+      "title": "OutputSpec",
+      "type": "object"
+    },
+    "PrintMetadata": {
+      "additionalProperties": false,
+      "description": "Everything needed to reproduce a printed specimen.",
+      "properties": {
+        "bed_temp_c": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bed Temp C"
+        },
+        "brand": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand"
+        },
+        "cycle_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cycle Count"
+        },
+        "infill_percent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Infill Percent"
+        },
+        "layer_height_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Layer Height Mm"
+        },
+        "lot_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lot Id"
+        },
+        "material": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Material"
+        },
+        "measured_flexure_t_mm": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "As-printed flexure thickness per joint, for the geometry-vs-material split",
+          "title": "Measured Flexure T Mm",
+          "type": "object"
+        },
+        "nozzle_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nozzle Mm"
+        },
+        "nozzle_temp_c": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nozzle Temp C"
+        },
+        "orientation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Orientation"
+        },
+        "print_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Print Date"
+        },
+        "printer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Printer"
+        },
+        "room_humidity_percent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Room Humidity Percent"
+        },
+        "room_temp_c": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Room Temp C"
+        },
+        "test_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test Date"
+        }
+      },
+      "title": "PrintMetadata",
+      "type": "object"
+    },
+    "ProvenanceSpec": {
+      "additionalProperties": false,
+      "description": "Reproducibility record for the sample.",
+      "properties": {
+        "code_commit": {
+          "title": "Code Commit",
+          "type": "string"
+        },
+        "config_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Config Hash"
+        },
+        "created_utc": {
+          "title": "Created Utc",
+          "type": "string"
+        },
+        "is_physical": {
+          "description": "False means placeholder inputs were used; not a physical prediction",
+          "title": "Is Physical",
+          "type": "boolean"
+        },
+        "notes": {
+          "additionalProperties": true,
+          "title": "Notes",
+          "type": "object"
+        },
+        "placeholders_used": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Placeholders Used",
+          "type": "array"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code_commit",
+        "version",
+        "created_utc",
+        "is_physical"
+      ],
+      "title": "ProvenanceSpec",
+      "type": "object"
+    },
+    "RigidSpec": {
+      "additionalProperties": false,
+      "description": "The rigid linkage: graph, geometry and classification.",
+      "properties": {
+        "bodies": {
+          "items": {
+            "$ref": "#/$defs/BodySpec"
+          },
+          "title": "Bodies",
+          "type": "array"
+        },
+        "grashof": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GrashofSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "input_joint": {
+          "title": "Input Joint",
+          "type": "string"
+        },
+        "input_range_deg": {
+          "description": "Absolute orientation of the input link at the start and end of the arc, measured from the world +x axis. Always a limited arc.",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "description": "Angle in degrees",
+              "type": "number"
+            },
+            {
+              "description": "Angle in degrees",
+              "type": "number"
+            }
+          ],
+          "title": "Input Range Deg",
+          "type": "array"
+        },
+        "joints": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JointSpec"
+          },
+          "title": "Joints",
+          "type": "object"
+        },
+        "link_lengths_mm": {
+          "additionalProperties": {
+            "description": "Length in millimetres",
+            "type": "number"
+          },
+          "title": "Link Lengths Mm",
+          "type": "object"
+        },
+        "outputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/OutputSpec"
+          },
+          "title": "Outputs",
+          "type": "object"
+        },
+        "transmission_angle_max_deg": {
+          "anyOf": [
+            {
+              "description": "Angle in degrees",
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transmission Angle Max Deg"
+        },
+        "transmission_angle_min_deg": {
+          "anyOf": [
+            {
+              "description": "Angle in degrees",
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transmission Angle Min Deg"
+        },
+        "type": {
+          "description": "Topology name, e.g. 'four_bar'",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "bodies",
+        "joints",
+        "outputs",
+        "input_joint",
+        "input_range_deg"
+      ],
+      "title": "RigidSpec",
+      "type": "object"
+    },
+    "SimulatedSpec": {
+      "additionalProperties": false,
+      "description": "Simulated results, as paths to CSV files relative to the sample folder.",
+      "properties": {
+        "fea_beam_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fea Beam Path"
+        },
+        "fea_solid_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fea Solid Path"
+        },
+        "input_torque_curve": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Torque Curve"
+        },
+        "peak_strain_overall": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peak Strain Overall"
+        },
+        "prbm_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prbm Path"
+        },
+        "rigid_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rigid Path"
+        },
+        "strain": {
+          "additionalProperties": {
+            "$ref": "#/$defs/StrainSpec"
+          },
+          "title": "Strain",
+          "type": "object"
+        },
+        "strain_margin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "allowable_strain / peak_strain_overall; < 1 means infeasible",
+          "title": "Strain Margin"
+        }
+      },
+      "title": "SimulatedSpec",
+      "type": "object"
+    },
+    "StrainSpec": {
+      "additionalProperties": false,
+      "description": "Peak bending strain in one flexure over the input arc.",
+      "properties": {
+        "bend_angle_deg": {
+          "description": "Angle in degrees",
+          "title": "Bend Angle Deg",
+          "type": "number"
+        },
+        "includes_axial": {
+          "default": false,
+          "description": "Whether axial stress from link loads is included in this figure",
+          "title": "Includes Axial",
+          "type": "boolean"
+        },
+        "includes_stress_concentration": {
+          "default": false,
+          "description": "Whether a geometric stress-concentration factor is included. Required for notch hinges; not applicable to a prismatic leaf flexure.",
+          "title": "Includes Stress Concentration",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Name of the strain model used, e.g. 'leaf_uniform_bending' (eps = t*theta/(2L)). Recorded because it differs by flexure type.",
+          "title": "Model",
+          "type": "string"
+        },
+        "peak_strain": {
+          "title": "Peak Strain",
+          "type": "number"
+        }
+      },
+      "required": [
+        "peak_strain",
+        "model",
+        "bend_angle_deg"
+      ],
+      "title": "StrainSpec",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One dataset sample: a rigid linkage and its compliant counterpart.",
+  "properties": {
+    "compliant": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompliantSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "feasibility": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FeasibilitySpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "id": {
+      "description": "Stable sample id, e.g. 'fb4_000123'",
+      "title": "Id",
+      "type": "string"
+    },
+    "joint_excursion_deg": {
+      "additionalProperties": {
+        "description": "Angle in degrees",
+        "type": "number"
+      },
+      "description": "Peak-to-peak relative rotation at each joint over the input arc",
+      "title": "Joint Excursion Deg",
+      "type": "object"
+    },
+    "measured": {
+      "description": "One entry per printed specimen; 3 per design in Phase B",
+      "items": {
+        "$ref": "#/$defs/MeasuredSpec"
+      },
+      "title": "Measured",
+      "type": "array"
+    },
+    "metrics": {
+      "$ref": "#/$defs/MetricsSpec"
+    },
+    "provenance": {
+      "$ref": "#/$defs/ProvenanceSpec"
+    },
+    "rigid": {
+      "$ref": "#/$defs/RigidSpec"
+    },
+    "simulated": {
+      "$ref": "#/$defs/SimulatedSpec"
+    },
+    "version": {
+      "default": "0.1",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "rigid",
+    "provenance"
+  ],
+  "title": "Sample",
+  "type": "object"
+}

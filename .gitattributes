@@ -1,0 +1,10 @@
+# Normalise to LF in the repository so Linux and Windows CI agree.
+# The schema-drift check in CI is a `git diff --exit-code`, which CRLF would break.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.stl binary
+*.step binary
+*.mp4 binary
+*.parquet binary

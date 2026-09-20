@@ -1,0 +1,263 @@
+{
+  "$defs": {
+    "BodySpec": {
+      "additionalProperties": false,
+      "description": "One body of the rigid linkage.",
+      "properties": {
+        "is_ground": {
+          "default": false,
+          "title": "Is Ground",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "BodySpec",
+      "type": "object"
+    },
+    "GrashofSpec": {
+      "additionalProperties": false,
+      "description": "Grashof classification of the rigid linkage.",
+      "properties": {
+        "classification": {
+          "title": "Classification",
+          "type": "string"
+        },
+        "condition": {
+          "enum": [
+            "grashof",
+            "non_grashof",
+            "change_point"
+          ],
+          "title": "Condition",
+          "type": "string"
+        },
+        "input_fully_rotates": {
+          "description": "Whether the input link can fully rotate. A flexure cannot, so such a design has no direct compliant equivalent and must be driven over a limited arc.",
+          "title": "Input Fully Rotates",
+          "type": "boolean"
+        },
+        "p_plus_q": {
+          "title": "P Plus Q",
+          "type": "number"
+        },
+        "s_plus_l": {
+          "title": "S Plus L",
+          "type": "number"
+        },
+        "shortest": {
+          "title": "Shortest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "condition",
+        "classification",
+        "shortest",
+        "s_plus_l",
+        "p_plus_q",
+        "input_fully_rotates"
+      ],
+      "title": "GrashofSpec",
+      "type": "object"
+    },
+    "JointSpec": {
+      "additionalProperties": false,
+      "description": "One joint of the rigid linkage.",
+      "properties": {
+        "bodies": {
+          "description": "The two bodies this joint connects",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Bodies",
+          "type": "array"
+        },
+        "kind": {
+          "default": "revolute",
+          "enum": [
+            "revolute",
+            "prismatic",
+            "flexure"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "xy_mm": {
+          "description": "Position in the reference configuration",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            },
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            }
+          ],
+          "title": "Xy Mm",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bodies",
+        "xy_mm"
+      ],
+      "title": "JointSpec",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "description": "A tracked point rigidly attached to a body.",
+      "properties": {
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "xy_mm": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            },
+            {
+              "description": "Length in millimetres",
+              "type": "number"
+            }
+          ],
+          "title": "Xy Mm",
+          "type": "array"
+        }
+      },
+      "required": [
+        "body",
+        "xy_mm"
+      ],
+      "title": "OutputSpec",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The rigid linkage: graph, geometry and classification.",
+  "properties": {
+    "bodies": {
+      "items": {
+        "$ref": "#/$defs/BodySpec"
+      },
+      "title": "Bodies",
+      "type": "array"
+    },
+    "grashof": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GrashofSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "input_joint": {
+      "title": "Input Joint",
+      "type": "string"
+    },
+    "input_range_deg": {
+      "description": "Absolute orientation of the input link at the start and end of the arc, measured from the world +x axis. Always a limited arc.",
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "description": "Angle in degrees",
+          "type": "number"
+        },
+        {
+          "description": "Angle in degrees",
+          "type": "number"
+        }
+      ],
+      "title": "Input Range Deg",
+      "type": "array"
+    },
+    "joints": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JointSpec"
+      },
+      "title": "Joints",
+      "type": "object"
+    },
+    "link_lengths_mm": {
+      "additionalProperties": {
+        "description": "Length in millimetres",
+        "type": "number"
+      },
+      "title": "Link Lengths Mm",
+      "type": "object"
+    },
+    "outputs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/OutputSpec"
+      },
+      "title": "Outputs",
+      "type": "object"
+    },
+    "transmission_angle_max_deg": {
+      "anyOf": [
+        {
+          "description": "Angle in degrees",
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Transmission Angle Max Deg"
+    },
+    "transmission_angle_min_deg": {
+      "anyOf": [
+        {
+          "description": "Angle in degrees",
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Transmission Angle Min Deg"
+    },
+    "type": {
+      "description": "Topology name, e.g. 'four_bar'",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "bodies",
+    "joints",
+    "outputs",
+    "input_joint",
+    "input_range_deg"
+  ],
+  "title": "RigidSpec",
+  "type": "object"
+}

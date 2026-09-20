@@ -1,0 +1,95 @@
+[project]
+name = "cmtool"
+version = "0.1.0.dev0"
+description = "Rigid-to-compliant planar linkage toolkit: conversion, simulation, CAD export and measurement."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [
+    # PLACEHOLDER: replace with real team names and ORCIDs before first release
+    { name = "TODO Author One" },
+]
+keywords = ["compliant-mechanism", "flexure", "linkage", "kinematics", "PRBM", "FEA"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+data = ["pandas>=2.2", "pyarrow>=15.0"]
+plot = ["matplotlib>=3.8"]
+cad = ["cadquery>=2.4"]
+vision = ["opencv-contrib-python>=4.9"]
+viz = ["pyvista>=0.43", "trame>=3.6", "trame-vtk>=2.8", "trame-vuetify>=2.4"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+]
+
+[project.scripts]
+cmtool = "cmtool.cli:app"
+
+[project.urls]
+# PLACEHOLDER: replace with the real repository URL once the GitHub repo exists
+Homepage = "https://github.com/TODO-USER/TODO-REPO"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cmtool"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "validation: checks a solver against an analytical or published reference",
+    "slow: takes more than a few seconds",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "NPY", "RUF", "D"]
+ignore = ["D105", "D107", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D101", "D102", "D103"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.mypy]
+# 3.12 rather than the 3.11 floor: numpy's bundled stubs use 3.12-only syntax.
+# Runtime compatibility with 3.11 is covered by the CI test matrix.
+python_version = "3.12"
+packages = ["cmtool"]
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["scipy.*", "cadquery.*", "cv2.*", "pyvista.*", "matplotlib.*", "pandas.*"]
+ignore_missing_imports = true

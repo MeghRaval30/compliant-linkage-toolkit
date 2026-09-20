@@ -1,0 +1,47 @@
+# Printer / process configuration.
+# PLACEHOLDER: the brief left the printer model and bed size as unfilled brackets.
+
+name: "default"
+model: null                 # PLACEHOLDER: replace with actual printer model
+nozzle_diameter_mm:
+  value: 0.4
+  status: vendor
+  source: "Stated by the team in the project brief."
+layer_height_mm:
+  value: 0.2
+  status: vendor
+  source: "Stated by the team in the project brief."
+
+bed:
+  # PLACEHOLDER: brief said "[size], [shape]"; falling back to the 180x180 mm default
+  # named in the project brief section 6 until confirmed.
+  shape: "rectangular"      # PLACEHOLDER: confirm
+  envelope_mm: [180.0, 180.0]
+  status: placeholder
+  note: "PLACEHOLDER: confirm actual usable bed envelope and shape."
+
+# Design rules derived from the process. These are DESIGN CHOICES, not measurements,
+# but they must be justified and are checked by cmtool.cad before export.
+design_rules:
+  min_flexure_thickness_mm:
+    value: 0.6
+    status: design_choice
+    source: "1.5 x nozzle diameter: two perimeters wide, avoids single-wall flexures."
+    note: "Revisit after the first prints: if 0.4 mm prints reliably, thinner flexures widen the feasible design space a lot."
+  min_link_width_mm:
+    value: 3.0
+    status: design_choice
+    source: "Keeps rigid links stiff relative to flexures (PRBM validity)."
+  part_thickness_mm:
+    value: 6.0
+    status: design_choice
+    source: "Out-of-plane depth. Large w/t ratio keeps deformation planar; see docs/physics.md."
+  min_feature_clearance_mm:
+    value: 0.4
+    status: design_choice
+
+orientation:
+  # Confirmed by the team: mechanism plane parallel to the bed, flexures bend in-plane.
+  mechanism_plane: "parallel_to_bed"
+  status: confirmed
+  note: "Layers stack out-of-plane, so flexure bending does not load the inter-layer bond in tension."

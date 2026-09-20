@@ -1,0 +1,60 @@
+# Material definition for cmtool.
+#
+# DATA DISCIPLINE (see docs/physics.md):
+#   Every physical quantity carries `status`.
+#     measured    -> obtained from our own test, with provenance below
+#     vendor      -> taken from a datasheet, cited
+#     placeholder -> NOT a measurement. `value` is null; `provisional_value` exists
+#                    only so that code can execute. Any result computed from a
+#                    provisional value is stamped `placeholders_used` and must never
+#                    be reported as a physical prediction.
+
+name: PLA
+long_name: "Polylactic acid, FDM printed"
+# PLACEHOLDER: fill in once the spool is bought (brand + colour + lot were left blank in the brief)
+supplier:
+  brand: null          # PLACEHOLDER: replace with measured value / actual purchase
+  colour: null         # PLACEHOLDER
+  lot_id: null         # PLACEHOLDER
+  spool_count: 2
+
+properties:
+  youngs_modulus_MPa:
+    value: null
+    provisional_value: 3500.0
+    status: placeholder
+    source: "Generic order-of-magnitude range for printed PLA (~2500-4000 MPa). NOT a measurement."
+    note: "PLACEHOLDER: replace with measured value from the A3 cantilever strip test."
+    measured_at_rate_mm_per_s: null
+    measured_orientation: null
+    measured_date: null
+
+  density_kg_per_m3:
+    value: null
+    provisional_value: 1240.0
+    status: placeholder
+    source: "Generic bulk PLA density. NOT a measurement; printed parts are less dense (infill/voids)."
+    note: "PLACEHOLDER: replace with measured value (weigh a printed strip of known volume)."
+
+  allowable_strain:
+    value: null
+    provisional_value: 0.01
+    status: placeholder
+    source: "Conservative guess only. NOT a measurement."
+    note: |
+      PLACEHOLDER: replace with measured value. This is the single most important number
+      for feasibility filtering (strain limit drives the maximum joint excursion).
+      Determine from the cantilever strip tests plus a deliberate flexure-to-failure test.
+
+  yield_stress_MPa:
+    value: null
+    provisional_value: 50.0
+    status: placeholder
+    source: "Generic order-of-magnitude for printed PLA. NOT a measurement."
+    note: "PLACEHOLDER: replace with measured value."
+
+# Viscoelasticity is real and matters (see docs/physics.md, disagreement 4).
+# Phase A does not model it; these fields exist so Phase C can fill them.
+viscoelastic:
+  modelled: false
+  creep_note: "Not modelled in Phase A. Filming protocol must log settle time."

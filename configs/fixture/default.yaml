@@ -1,0 +1,55 @@
+# Test fixture and measurement hardware configuration.
+# The mechanism is tested LYING HORIZONTAL, raised off the table (team decision),
+# so gravity acts out-of-plane. See docs/physics.md "Gravity and marker mass".
+
+name: "default"
+
+mount:
+  # Reusable separate fixture with a bolt pattern (team decision), not monolithic.
+  type: "reusable_bolted"
+  bolt_pattern: "M3"        # PLACEHOLDER: confirm fastener size actually on hand
+  status: placeholder
+
+fiducials:
+  dictionary: "DICT_4X4_50"
+  marker_size_mm:
+    value: 12.0
+    status: design_choice
+    source: "Large enough for stable corner detection at ~300 mm standoff; revisit after A5."
+  board_spacing_mm:
+    value: 30.0
+    status: design_choice
+    note: "Known spacing between base fiducials defines the mm scale of the homography."
+  markers_per_pad: 4
+  note: "Multi-marker pads (grid board), not single tags -- far more stable pose."
+
+marker_pads:
+  # Paper ArUco stickers on thin pads (team decision) to keep mass down.
+  substrate: "printed_pad"
+  substrate_thickness_mm:
+    value: 1.0
+    status: design_choice
+  sticker: "paper_label"
+  mass_g:
+    value: null
+    provisional_value: 0.35
+    status: placeholder
+    source: "Estimate only. NOT a measurement."
+    note: |
+      PLACEHOLDER: replace with measured value -- weigh one finished pad + sticker on a
+      jeweller's scale. Needed for the out-of-plane sag check (docs/physics.md).
+
+camera:
+  model: null               # PLACEHOLDER: brief left "[phone model]" unfilled
+  resolution: null          # PLACEHOLDER: e.g. [3840, 2160]
+  fps: null                 # PLACEHOLDER: brief left "[4K/60 yes/no]" unfilled
+  tripod: null              # PLACEHOLDER: brief left "[yes/no]" unfilled
+  standoff_mm: null         # PLACEHOLDER: measure once the rig is set up
+  status: placeholder
+
+metrology:
+  # PLACEHOLDER: brief left all three as unfilled brackets.
+  calipers: null
+  micrometer: null
+  macro_lens: null
+  status: placeholder

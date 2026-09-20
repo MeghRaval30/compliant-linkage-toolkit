@@ -1,0 +1,245 @@
+# Physics conventions, models and their validity limits
+
+This file records the modelling decisions the code depends on, and — more importantly —
+where each model stops being valid. Every number the toolkit produces should be traceable
+to something written down here.
+
+> **Status.** Milestone A1 (rigid kinematics) is implemented. The PRBM (A3), beam FEA (A4)
+> and strain models are specified here but not yet written. Sections marked *(planned)*
+> describe what will be implemented, not what exists.
+
+---
+
+## 1. Units and frames
+
+Internally everything is **millimetres and radians**. Degrees appear only at the public API
+boundary, where the name says so (`input_range_deg`, `joint_excursion_deg`). All conversions
+live in `cmtool/core/units.py`.
+
+**Absolute angles** are measured from the world +x axis. The input coordinate `theta2` is
+the direction of the vector from the input joint to the input link's far joint.
+
+**The reference configuration** is the as-defined geometry in `joints_mm` — which, for a
+compliant mechanism, is the **as-printed, unstressed** state. Everything that matters to a
+flexure is reported relative to it:
+
+- `input_sweep_deg` — input rotation from the reference state
+- `joint_rotation_deg(joint)` — relative rotation of the two bodies at a joint
+- `joint_excursion_deg()` — **peak-to-peak** of the above over the whole arc
+
+Peak-to-peak is the headline excursion number because a flexure's total bend range, not its
+displacement from an arbitrary zero, is what the strain limit and fatigue life respond to.
+
+## 2. Limited input arcs
+
+**A flexure cannot rotate continuously.** A crank that turns fully has no compliant
+equivalent, so there is no "full revolution" default anywhere in the toolkit:
+`simulate()` refuses to run without an explicit arc.
+
+Grashof classification still matters, and `classify_grashof()` reports
+`input_fully_rotates`. That flag is **informational, not a rejection criterion**: a
+crank-rocker driven over a 40° arc is a perfectly good compliant candidate. What actually
+disqualifies a design is excessive joint excursion (strain), not its Grashof type. The
+bundled `examples/fourbar.json` is deliberately a crank-rocker for exactly this reason.
+
+The reachable arc is available in closed form. With the ground link direction `theta1`, the
+output dyad closes only while `|r3 - r4| <= |BD| <= r3 + r4`, and since
+
+```
+|BD|² = r1² + r2² − 2 r1 r2 cos(theta2 − theta1)
+```
+
+the condition becomes a pair of bounds on `cos(theta2 − theta1)`, giving
+`phi_min <= |theta2 − theta1| <= phi_max`. See `reachable_input_arc()`; the test suite
+checks it against a brute-force assembly scan at 0.25° resolution.
+
+## 3. Branches and toggles
+
+The two intersections of the coupler and output circles are the two **assembly branches**.
+Branch `+1` is the intersection left of the directed line `B -> D`. A sweep stays on the
+branch of the reference configuration.
+
+A **branch flip** during a sweep is not a pose change — it is a different mechanism. It is
+detected and reported (`diagnostics["branch_flip"]`), and Phase B's generator rejects on it.
+`dyad_clearance()` gives the distance from a toggle in mm; it reaches zero exactly where the
+circles become tangent and the branches merge.
+
+## 4. Flexure strain *(planned, A3)*
+
+### The leaf-flexure model
+
+For a prismatic leaf flexure of thickness `t` and length `L` bent through angle `theta`,
+uniform curvature gives radius `rho = L / theta`, so the peak surface strain is
+
+```
+eps = t / (2 rho) = t * theta / (2 L)
+```
+
+This is the model named `leaf_uniform_bending` in the sample schema. It applies to the
+small-length flexural pivot (A2).
+
+### What it excludes, and why that is recorded
+
+1. **Axial stress.** Link loads put the flexure in tension or compression. This is computed
+   and reported *separately* rather than folded into the bending figure, so the two
+   contributions stay visible. `StrainSpec.includes_axial` records which is which.
+2. **Stress concentration.** A prismatic leaf has none of consequence. A **circular notch
+   hinge does**, and using this formula for one would under-predict peak strain
+   substantially. Strain is therefore a per-flexure-type method (`FlexureType.strain()`),
+   not a global function. When the notch hinge is added in Phase B it must supply its own
+   model with a geometric stress-concentration factor from config, and set
+   `includes_stress_concentration`.
+3. **Non-uniform curvature.** Real flexures under combined load do not bend in a perfect
+   circular arc. The beam FEA (A4) does not make this assumption, and the PRBM-vs-FEA
+   disagreement metric is partly a measure of this error.
+
+### The allowable strain
+
+`allowable_strain` is a **config value per material and is currently a placeholder**. It is
+the single most important number for feasibility filtering, since it sets the maximum joint
+excursion. It will come from the cantilever strip tests plus a deliberate flexure-to-failure
+test (A3, week 3).
+
+## 5. PRBM stiffness and its validity envelope *(planned, A3)*
+
+For a small-length flexural pivot the characteristic pivot sits at the **centre of the
+flexure** and the torsional spring constant is
+
+```
+K = E I / L,    I = w t³ / 12
+```
+
+with `w` the out-of-plane width (the printed part thickness).
+
+This is only valid inside an envelope, and the dataset records the ratios rather than
+assuming them:
+
+| Condition | Rule of thumb | Recorded as |
+|---|---|---|
+| Flexure short relative to its links | `L_flexure / L_link ≲ 0.1` | `prbm_validity.length_ratio` |
+| Rigid segments genuinely rigid | `E I` of link ≫ `E I` of flexure | `prbm_validity.stiffness_ratio` |
+| Moderate deflection | bend angle within the PRBM's fitted range | `prbm_validity.bend_angle_deg` |
+
+Phase B deliberately samples toward the edges of this envelope, so these ratios are stored
+for every sample. The Phase C "fidelity map" — where PRBM suffices and where FEA is needed —
+then falls out of data already collected rather than requiring a new study.
+
+## 6. Pivot-matched placement
+
+This is a conversion rule, not a physical model, but getting it wrong would look like
+physics.
+
+For a small-length flexural pivot the PRBM characteristic pivot is at the **centre of the
+flexure**, not at the original rigid joint coordinate. If flexures are dropped in by
+extending links to the old joint locations, every one of the four effective link lengths
+changes by roughly `L_flexure / 2`, and the compliant coupler path is displaced *before any
+physics enters*.
+
+So the default `naive` strategy is **pivot-matched**: flexure geometry is placed so that the
+characteristic pivots land on the original rigid joint coordinates, and the residual is
+recorded in `FlexureSpec.pivot_offset_mm`.
+
+A `naive_unmatched` variant is kept deliberately, so the paper can *show* the size of this
+effect rather than silently suffer from it. `FlexureSpec.placement` records which was used,
+keeping conversion artefacts separable from the simulation-to-reality gap.
+
+## 7. Gravity, marker mass, and the 2D assumption
+
+The mechanism is tested **lying horizontal**, raised off the table. Two consequences:
+
+**In-plane, gravity contributes exactly zero.** Gravity acts perpendicular to the mechanism
+plane, so neither self-weight nor marker-pad mass appears in the in-plane equilibrium the 2D
+solvers compute. Adding pad mass to the 2D FEA would be adding zero. (Raising the part off
+the table is a good decision for a second reason: it removes table friction, which is larger
+and far less predictable than anything gravity does here.)
+
+**Out-of-plane, gravity causes sag and twist,** which the 2D solver cannot see. This is
+where the pad mass has to be accounted for, and the check is an out-of-plane one:
+
+*Why the part is stiff in that direction.* A flexure's cross-section is `t` in-plane by `w`
+out-of-plane. Second moments are `I_in = w t³ / 12` for the intended motion and
+`I_out = t w³ / 12` for sag, so
+
+```
+I_out / I_in = (w / t)²
+```
+
+With the current design rules (`w = 6 mm`, `t_min = 0.6 mm`) that is a factor of 100. The
+part is deliberately far stiffer out of plane than in it — that is what makes the planar
+assumption reasonable, and it is why `part_thickness_mm` is a design rule rather than an
+afterthought.
+
+*The check to be implemented (A2/A4).* An analytic out-of-plane estimate for the coupler
+point, conservatively treating the weakest path as a cantilever:
+
+```
+delta_z ≈ m' g L⁴ / (8 E I_out)   +   M_pad g L³ / (3 E I_out)
+           (distributed self-weight)   (concentrated pad mass)
+```
+
+*Why it matters to the measurement, not the mechanism.* Sag of `delta_z` is not primarily a
+mechanism error — it is a **measurement** error. The homography assumes markers lie in the
+calibration plane, so a marker that rises out of it by `delta_z` at lateral distance `r`
+from the optical axis, with camera standoff `h`, produces an apparent in-plane displacement
+of roughly
+
+```
+error_apparent ≈ r * delta_z / h
+```
+
+The criterion, checked at the A5 go/no-go: `error_apparent` must be well under the
+measurement uncertainty. If it is not, the fix is a stiffer part or a longer standoff, not a
+3D solver.
+
+**This cannot be evaluated yet.** It needs the measured pad mass and the measured modulus,
+both currently placeholders. The estimate will be computed through the placeholder machinery
+(§9) so it is reported with the caveat attached until those two measurements exist —
+expected week 2–3.
+
+**One in-plane exception.** Pad mass does enter in-plane through *inertia*. Hand-actuated
+quasi-static testing makes this negligible. Servo-driven cycling in Phase C does not:
+inertial loads scale with the square of the drive frequency, so pad mass must be revisited
+there.
+
+## 8. Material behaviour
+
+Printed PLA is **viscoelastic and anisotropic**. One Young's modulus will not serve every
+test in this project:
+
+- A modulus measured in a slow cantilever test will not predict a 1 Hz cycling test.
+- Creep will drift the path over minutes of filming.
+
+So: modulus is measured at the same rate as the path tests; the filming protocol logs a
+settle time; and the config stores `measured_at_rate`, `measured_orientation` and
+`measured_date` alongside the value. Phase C's cycling study should expect to need a
+different modulus — that is a result, not a bug.
+
+Parts are printed **flat on the bed with the mechanism plane parallel to it**, so flexures
+bend in-plane and inter-layer bonds are not loaded in tension. Print orientation is the
+single largest strength variable, which is why Phase C varies it deliberately.
+
+## 9. The placeholder discipline
+
+Every physical quantity in `configs/` carries a `status`:
+
+| status | meaning |
+|---|---|
+| `measured` | our own measurement, with date, rate and orientation recorded |
+| `vendor` | datasheet or stated specification, cited |
+| `design_choice` | a decision we made, with a justification |
+| `confirmed` | a fact about the setup confirmed by the team |
+| `placeholder` | **not a measurement** |
+
+A placeholder has `value: null` and a `provisional_value` that exists only so code can
+execute. Using one:
+
+1. records the quantity's name in the result's `provenance.placeholders_used`,
+2. emits a `ProvisionalDataWarning`,
+3. sets `is_physical = False` on the result and on any sample derived from it,
+4. attaches a caveat line to plots and reports.
+
+Setting `CMTOOL_STRICT_DATA=1` turns step 1 into a hard error instead. Use it when producing
+anything that claims to be a physical result.
+
+The rigid kinematic solver uses no material data at all, so its results are always
+`is_physical = True`. The rigid path is pure geometry.

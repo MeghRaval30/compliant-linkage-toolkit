@@ -1,0 +1,35 @@
+# Bulk research data: released via Zenodo, never committed (see docs/dataset.md)
+data/**
+!data/.gitkeep
+!data/README.md
+
+# Generated artefacts
+*.stl
+*.step
+*.stp
+*.mp4
+*.gif
+out/
+build/
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
