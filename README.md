@@ -23,6 +23,8 @@ simulation-to-reality gap?
 
 New here? [docs/walkthrough.md](docs/walkthrough.md) explains each part in plain language —
 what it solves, the equation, why, and where it stops being true.
+Picking the work back up? [docs/HANDOVER.md](docs/HANDOVER.md) is the current state of
+play: what is built, what is still unmeasured, and what happens next.
 
 ## Install
 
