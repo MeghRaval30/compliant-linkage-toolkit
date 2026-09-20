@@ -143,7 +143,7 @@ class TestCli:
         result = runner.invoke(app, ["simulate", str(linkage_json), "--start-deg", "40"])
         assert result.exit_code == 2
 
-    @pytest.mark.parametrize("command", ["generate", "track"])
+    @pytest.mark.parametrize("command", ["generate"])
     def test_future_milestone_commands_fail_clearly(self, command):
         result = runner.invoke(app, [command])
         assert result.exit_code == 2

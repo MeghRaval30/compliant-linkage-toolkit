@@ -76,7 +76,7 @@ class MechanismCadSpec:
     base_margin_mm: float = 14.0
     bolt_diameter_mm: float = 3.4
     bolt_inset_mm: float = 8.0
-    force_hole_diameter_mm: float = 4.0
+    force_hole_diameter_mm: float = 3.0
     force_point_fraction: float = 0.8
     fillet_radius_mm: float = 0.0
     part_thickness_mm: float | None = None
@@ -345,9 +345,14 @@ def build_mechanism(
     layout.lever_pad_mm = (float(lever_tip[0]), float(lever_tip[1]))
     solid = solid.union(_pad(lever_tip, spec.pad_size_mm * 0.6, depth, spec.pad_thickness_mm))
 
-    # Through-hole for a hook, so input torque can be measured with a hand scale.
+    # Through-hole for a thread (or a small hook), so input torque can be measured.
     # The path barely responds to flexure stiffness but the torque responds to it
     # directly, so torque is the measurement that actually tests the stiffness model.
+    #
+    # The primary rig runs a thread from here, horizontally, over a pulley at the
+    # table edge with weights hanging from it: the mechanism lies flat, so the pull
+    # is horizontal and a scale that weighs vertically cannot read it. 3 mm takes a
+    # doubled thread or a small S-hook and keeps the hole well inside the lever.
     radius = spec.lever_length_mm * spec.force_point_fraction
     force_point = input_joint.position_mm - toward_link * radius
     layout.force_point_mm = (float(force_point[0]), float(force_point[1]))

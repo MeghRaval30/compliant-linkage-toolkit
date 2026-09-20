@@ -10,10 +10,15 @@ rather than a bug spread across four solvers.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 
 FloatArray = npt.NDArray[np.float64]
+#: An image of any dtype. OpenCV returns uint8 and generic numeric arrays, so
+#: image plumbing must not be typed as strictly float64.
+ImageArray = npt.NDArray[Any]
 
 #: Internal length unit, stated once so downstream code can be explicit about it.
 LENGTH_UNIT = "mm"

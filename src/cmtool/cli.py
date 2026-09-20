@@ -541,10 +541,16 @@ def export(
         instructions=instructions,
     )
 
-    from cmtool.metrics import write_template
+    from cmtool.metrics import write_scale_template, write_weight_template
 
-    template = write_template(
-        Path(out) / f"{stem}_torque_template.csv",
+    # Mode A, dead weight over a pulley, is the primary rig; mode B is the backup.
+    template = write_weight_template(
+        Path(out) / f"{stem}_torque_weights.csv",
+        hole_radius_mm=layout.force_radius_mm,
+        printer=printer,
+    )
+    backup_template = write_scale_template(
+        Path(out) / f"{stem}_torque_scale.csv",
         lever_radius_mm=layout.force_radius_mm,
         input_range_deg=mech.input_range_deg,
         printer=printer,
@@ -564,7 +570,7 @@ def export(
     console.print(
         f"{stem}: {status}  {size[0]:.0f} x {size[1]:.0f} x {size[2]:.0f} mm  -> "
         f"{paths['step'].name}, {paths['stl'].name}, {sheet.name}, {report_path.name}, "
-        f"{template.name}"
+        f"{template.name}, {backup_template.name}"
     )
     for note in check.notes:
         console.print(f"    [yellow]{note}[/]")
@@ -645,7 +651,12 @@ def torque(
     from cmtool.api import convert as convert_api
     from cmtool.cad.mechanism import MechanismCadSpec, build_mechanism
     from cmtool.convert.arc import ArcFitError, fit_input_arc
-    from cmtool.metrics import compare, read_measurements, write_template
+    from cmtool.metrics import (
+        compare,
+        read_measurements,
+        write_scale_template,
+        write_weight_template,
+    )
 
     linkage = Linkage.from_json(linkage_json)
     arc: tuple[float, float] | None
@@ -658,16 +669,22 @@ def torque(
     _, layout = build_mechanism(mech, spec=MechanismCadSpec(), printer=None)
 
     if template_out is not None:
-        path = write_template(
+        weights = write_weight_template(
             template_out,
+            hole_radius_mm=layout.force_radius_mm,
+            printer=printer,
+        )
+        scale = write_scale_template(
+            template_out.with_name(template_out.stem + "_scale.csv"),
             lever_radius_mm=layout.force_radius_mm,
             input_range_deg=mech.input_range_deg,
             printer=printer,
         )
         console.print(
-            f"wrote {path} (lever radius {layout.force_radius_mm:.2f} mm, "
-            "hook the scale through the hole and pull perpendicular)"
+            f"wrote {weights} (mode A, dead weight over a pulley; lever hole at "
+            f"{layout.force_radius_mm:.2f} mm radius)"
         )
+        console.print(f"wrote {scale} (mode B, spring scale; backup rig)")
 
     prbm = simulate(mech, solver="prbm", n_steps=steps)
     fea = simulate(mech, solver="beam_fea", n_steps=steps)
@@ -737,10 +754,228 @@ def torque(
         console.print(f"wrote {json_out}")
 
 
+def _layout_from_report(report_json: Path) -> tuple[Any, tuple[float, float]]:
+    """Build a marker layout from an exported mechanism report."""
+    from cmtool.vision import MarkerLayout
+
+    data = json.loads(Path(report_json).read_text(encoding="utf-8"))
+    layout_data = data["layout"]
+    attachment = layout_data.get("attachment_points", {})
+    pivot = (0.0, 0.0)
+    for points in attachment.values():
+        for name, point in points.items():
+            if name == data["conversion"].get("input_joint", "A"):
+                pivot = (float(point[0]), float(point[1]))
+                break
+
+    layout = MarkerLayout.for_mechanism(
+        fiducial_pads_mm=[tuple(p) for p in layout_data["fiducial_pads_mm"]],
+        lever_pad_mm=tuple(layout_data["lever_pad_mm"])
+        if layout_data.get("lever_pad_mm")
+        else None,
+        coupler_pad_mm=tuple(layout_data["coupler_pad_mm"])
+        if layout_data.get("coupler_pad_mm")
+        else None,
+    )
+    return layout, pivot
+
+
 @app.command()
-def track() -> None:
-    """Track a printed mechanism from video (milestone A5)."""
-    _not_yet("A5", "camera tracking")
+def markers(
+    mechanism_json: Annotated[Path, typer.Argument(help="Exported *_mechanism.json")],
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/markers"),
+    pixels_per_mm: Annotated[float, typer.Option(help="Print resolution")] = 12.0,
+) -> None:
+    """Write printable ArUco sheets for a mechanism's marker pads."""
+    from cmtool.vision import write_marker_sheets
+
+    layout, _ = _layout_from_report(mechanism_json)
+
+    collisions = layout.overlaps()
+    for first, second, gap in collisions:
+        console.print(
+            f"[red]pads {first} and {second} are {gap:.1f} mm apart[/] - markers printed "
+            "on top of each other will simply not be detected"
+        )
+
+    written = write_marker_sheets(layout, out, pixels_per_mm=pixels_per_mm)
+    for name, path in written.items():
+        pad = layout.pad(name)
+        console.print(
+            f"{name}: ids {list(pad.marker_ids)}, {pad.marker_size_mm:.0f} mm markers "
+            f"-> {path.name}"
+        )
+    (Path(out) / "layout.json").write_text(
+        json.dumps(layout.to_dict(), indent=2) + "\n", encoding="utf-8"
+    )
+    console.print(
+        "[yellow]print at 100 percent scale and measure one marker with calipers before "
+        "sticking anything down: the millimetre layout assumes the printed size[/]"
+    )
+
+
+@app.command()
+def calibrate(
+    images_dir: Annotated[Path, typer.Argument(help="Directory of checkerboard images")],
+    out: Annotated[Path, typer.Option(help="Where to write the calibration")] = Path(
+        "out/calibration.json"
+    ),
+    pattern: Annotated[str, typer.Option(help="Inner corners, e.g. 9x6")] = "9x6",
+    square_mm: Annotated[float, typer.Option(help="Checkerboard square size")] = 10.0,
+    glob: Annotated[str, typer.Option(help="Image filename pattern")] = "*.jpg",
+) -> None:
+    """Calibrate the camera from checkerboard images."""
+    import cv2
+
+    from cmtool.vision import CalibrationError
+    from cmtool.vision import calibrate as run_calibration
+
+    cols, rows = (int(v) for v in pattern.lower().split("x"))
+    files = sorted(Path(images_dir).glob(glob))
+    if not files:
+        console.print(f"[red]no images matching {glob} in {images_dir}[/]")
+        raise typer.Exit(code=1)
+
+    images = [cv2.imread(str(f)) for f in files]
+    try:
+        result = run_calibration(
+            [i for i in images if i is not None],
+            pattern=(cols, rows),
+            square_size_mm=square_mm,
+        )
+    except CalibrationError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"calibrated from {result.n_images} of {len(files)} images, "
+        f"reprojection rms {result.reprojection_rms_px:.3f} px"
+    )
+    console.print(f"wrote {result.save(out)}")
+
+
+@app.command()
+def track(
+    mechanism_json: Annotated[Path, typer.Argument(help="Exported *_mechanism.json")],
+    source: Annotated[Path, typer.Argument(help="Video file or directory of frames")],
+    out: Annotated[Path, typer.Option(help="Where to write the measured path")] = Path(
+        "out/measured_path.csv"
+    ),
+    calibration_json: Annotated[
+        Path | None, typer.Option("--calibration", help="Camera calibration")
+    ] = None,
+    stride: Annotated[int, typer.Option(help="Use every Nth video frame")] = 1,
+    glob: Annotated[str, typer.Option(help="Frame filename pattern")] = "*.png",
+    json_out: Annotated[Path | None, typer.Option("--json", help="Write a summary")] = None,
+) -> None:
+    """Track a printed mechanism from video or frames, and write its measured path."""
+    from cmtool.vision import CameraCalibration, frames_from_directory, frames_from_video
+    from cmtool.vision import track as run_tracking
+
+    layout, pivot = _layout_from_report(mechanism_json)
+    calibration = CameraCalibration.load(calibration_json) if calibration_json is not None else None
+    if calibration is None:
+        console.print(
+            "[yellow]no --calibration given: lens distortion is not projective, so a "
+            "homography cannot absorb it. Uncorrected, it biases positions across the "
+            "frame in a way that mimics a real path deviation.[/]"
+        )
+
+    frames = (
+        frames_from_directory(source, pattern=glob)
+        if source.is_dir()
+        else frames_from_video(source, stride=stride)
+    )
+    result = run_tracking(frames, layout, pivot_mm=pivot, calibration=calibration)
+
+    summary = result.summary()
+    table = Table(title=f"tracked {source.name}", show_header=False, box=None)
+    table.add_row("frames", str(summary["n_frames"]))
+    table.add_row("tracked", f"{summary['n_tracked']} ({summary['tracked_fraction'] * 100:.0f}%)")
+    if summary["homography_rms_px_mean"] is not None:
+        table.add_row(
+            "homography rms (px)",
+            f"{summary['homography_rms_px_mean']:.3f} mean, "
+            f"{summary['homography_rms_px_max']:.3f} worst",
+        )
+    console.print(table)
+    for reason, count in summary["failures"].items():
+        console.print(f"  [yellow]{count} frames: {reason}[/]")
+
+    if result.n_tracked == 0:
+        console.print("[red]nothing tracked; check lighting, focus and marker placement[/]")
+        raise typer.Exit(code=1)
+
+    console.print(f"wrote {result.write_csv(out)}")
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(summary, indent=2, default=str) + "\n", encoding="utf-8")
+        console.print(f"wrote {json_out}")
+
+
+@app.command()
+def uncertainty(
+    static_csv: Annotated[
+        Path | None, typer.Option("--static", help="Tracked CSV of a stationary scene")
+    ] = None,
+    circle_csv: Annotated[
+        Path | None, typer.Option("--circle", help="Tracked CSV of a rigid bar on a pin")
+    ] = None,
+    radius_mm: Annotated[
+        float | None, typer.Option(help="Caliper-measured radius of that bar")
+    ] = None,
+    signal_mm: Annotated[float, typer.Option(help="Signal to resolve, in mm")] = 0.46,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Write the report")] = None,
+) -> None:
+    """Report tracking uncertainty against the signal it has to resolve.
+
+    This is the Phase A go/no-go. Give it a static take, a known-motion take, or
+    both; the verdict takes the worst of what it is given.
+    """
+    import numpy as np
+
+    from cmtool.vision import GoNoGoReport, jitter, known_motion
+
+    def load(path: Path) -> Any:
+        rows = list(csv.DictReader(path.read_text(encoding="utf-8").splitlines()))
+        return np.array(
+            [[float(r["coupler_x_mm"]), float(r["coupler_y_mm"])] for r in rows], dtype=float
+        )
+
+    estimates = []
+    if static_csv is not None:
+        estimates.append(jitter(load(static_csv)))
+    if circle_csv is not None:
+        estimates.append(known_motion(load(circle_csv), expected_radius_mm=radius_mm))
+    if not estimates:
+        console.print("[red]give --static, --circle, or both[/]")
+        raise typer.Exit(code=2)
+
+    report = GoNoGoReport(estimates=estimates, signal_mm=signal_mm)
+    table = Table(title="tracking uncertainty")
+    table.add_column("method")
+    table.add_column("sigma (mm)", justify="right")
+    table.add_column("worst (mm)", justify="right")
+    table.add_column("samples", justify="right")
+    for estimate in report.estimates:
+        table.add_row(
+            estimate.method,
+            f"{estimate.sigma_mm:.4f}",
+            f"{estimate.max_deviation_mm:.4f}",
+            str(estimate.n_samples),
+        )
+    console.print(table)
+
+    colour = {"go": "green", "marginal": "yellow", "no-go": "red"}[report.verdict]
+    console.print(f"[{colour}]VERDICT: {report.verdict.upper()}[/]")
+    console.print(report.explain())
+
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(
+            json.dumps(report.to_dict(), indent=2, default=str) + "\n", encoding="utf-8"
+        )
+        console.print(f"wrote {json_out}")
 
 
 if __name__ == "__main__":

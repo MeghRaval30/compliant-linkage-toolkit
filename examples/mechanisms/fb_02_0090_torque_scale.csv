@@ -54,7 +54,8 @@ specimen_id,printer,print_purpose,direction,input_angle_deg,force_N,pull_angle_f
 ,kobra2_neo,data,unloading,82.85,,90,36.00,3,
 ,kobra2_neo,data,unloading,80.75,,90,36.00,3,
 
-# T = F * r * sin(pull_angle_from_lever_deg); pull perpendicular if you can
-# record loading and unloading separately: the gap between them is hysteresis
-# let the reading settle for a stated time at each angle -- PLA creeps
-# print_purpose: trial while settings are still moving, data once frozen
+# MODE B, spring scale. Backup rig: no pulley needed, but the pull is
+# horizontal while the scale weighs vertically, so it is awkward in-plane
+# and less repeatable than the dead-weight rig. Prefer mode A.
+# T = F * r * sin(pull_angle_from_lever_deg); pull perpendicular if you can.
+# The loading/unloading gap is hysteresis plus any rig friction.

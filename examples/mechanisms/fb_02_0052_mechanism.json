@@ -328,10 +328,10 @@
   },
   "provenance": {
     "config_hash": "ecf9b14c9554fa9543f570cafc5e0ce60e1c6c6e1d2acf98941edfc24d111968",
-    "code_commit": "d8fe1ad38984e00859ae966866802993b16b191b-dirty",
+    "code_commit": "f44ae04bdcef36bf596f186b8271a00d4251465b-dirty",
     "version": "0.1.0.dev0",
     "seed": null,
-    "created_utc": "2026-09-20T16:15:52+00:00",
+    "created_utc": "2026-09-20T17:05:18+00:00",
     "placeholders_used": [
       "PLA.properties.allowable_strain",
       "PLA.properties.youngs_modulus_MPa"

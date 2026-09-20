@@ -26,7 +26,7 @@ correction can close the difference.
 | Test coupons + mechanism CAD | **working** | Printable parts and print sheets |
 | PRBM | **working** | Input torque and strain, fast |
 | 2D beam FEA | **working** | Path, torque and strain without the PRBM's assumptions |
-| Camera tracking | A5 | The measured path |
+| Camera tracking | **working** | The measured path, and its uncertainty |
 | 3D solid FEA | Phase C | Checks whether the 2D assumption held |
 
 ---
@@ -277,11 +277,23 @@ which matter, but nothing about `K`.
 
 Input torque is directly proportional to stiffness. It is where the measured modulus, the
 PRBM's `K` and the FEA's distributed compliance all meet reality. So the printed lever
-carries a through-hole at a known radius: hook a kitchen or luggage scale through it, pull
-perpendicular, and `T = F·r`. For the pilot mechanisms the predicted peak force is about
-0.9 N (FEA) against 1.3 N (PRBM) at a 36 mm radius — roughly 90 g versus 135 g, which any
-kitchen scale resolves easily. The two models differ by more than the instrument's error,
-so this is a discriminating measurement rather than a formality.
+carries a through-hole at a known radius.
+
+**The rig, corrected.** A scale weighs *vertically* and the mechanism lies *flat*, so the
+pull on the lever is horizontal and a kitchen scale cannot read it. The primary rig is
+therefore a dead weight: thread from the lever hole, horizontally to a pulley at the table
+edge, weights hanging from it. The mechanism settles at an equilibrium angle read from the
+same camera.
+
+The subtlety is that the thread direction is not fixed — as the lever swings, the hole moves
+and the thread swings with it, so the moment arm changes through the sweep. The applied
+torque is `T = W·cross(H − A, û)`, with the cross product *being* the effective moment arm.
+Assuming it stays at `r` would be wrong by however much the geometry rotates. A spring
+scale at a known angle is kept as a backup mode.
+
+For the pilot mechanisms the predicted peak torque is about 32 N·mm (FEA) against 48 N·mm
+(PRBM) — at a 36 mm arm, roughly 90 g versus 135 g of hanging weight. The models differ by
+far more than a set of kitchen weights resolves, so this discriminates between them.
 
 Record loading and unloading separately. PLA is viscoelastic so the branches will not
 coincide, and the gap between them is hysteresis — a material property, not a measurement

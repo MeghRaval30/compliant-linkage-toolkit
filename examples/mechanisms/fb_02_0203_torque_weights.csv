@@ -1,0 +1,61 @@
+specimen_id,printer,print_purpose,sequence,step,hung_mass_g,measured_input_angle_deg,pulley_x_mm,pulley_y_mm,hole_radius_mm,settle_time_s,repeat,notes
+,kobra2_neo,data,loading,1,0.0,,,,36.00,,1,
+,kobra2_neo,data,loading,2,20.0,,,,36.00,,1,
+,kobra2_neo,data,loading,3,50.0,,,,36.00,,1,
+,kobra2_neo,data,loading,4,100.0,,,,36.00,,1,
+,kobra2_neo,data,loading,5,200.0,,,,36.00,,1,
+,kobra2_neo,data,loading,6,500.0,,,,36.00,,1,
+,kobra2_neo,data,unloading,1,500.0,,,,36.00,,1,
+,kobra2_neo,data,unloading,2,200.0,,,,36.00,,1,
+,kobra2_neo,data,unloading,3,100.0,,,,36.00,,1,
+,kobra2_neo,data,unloading,4,50.0,,,,36.00,,1,
+,kobra2_neo,data,unloading,5,20.0,,,,36.00,,1,
+,kobra2_neo,data,unloading,6,0.0,,,,36.00,,1,
+,kobra2_neo,data,loading,1,0.0,,,,36.00,,2,
+,kobra2_neo,data,loading,2,20.0,,,,36.00,,2,
+,kobra2_neo,data,loading,3,50.0,,,,36.00,,2,
+,kobra2_neo,data,loading,4,100.0,,,,36.00,,2,
+,kobra2_neo,data,loading,5,200.0,,,,36.00,,2,
+,kobra2_neo,data,loading,6,500.0,,,,36.00,,2,
+,kobra2_neo,data,unloading,1,500.0,,,,36.00,,2,
+,kobra2_neo,data,unloading,2,200.0,,,,36.00,,2,
+,kobra2_neo,data,unloading,3,100.0,,,,36.00,,2,
+,kobra2_neo,data,unloading,4,50.0,,,,36.00,,2,
+,kobra2_neo,data,unloading,5,20.0,,,,36.00,,2,
+,kobra2_neo,data,unloading,6,0.0,,,,36.00,,2,
+,kobra2_neo,data,loading,1,0.0,,,,36.00,,3,
+,kobra2_neo,data,loading,2,20.0,,,,36.00,,3,
+,kobra2_neo,data,loading,3,50.0,,,,36.00,,3,
+,kobra2_neo,data,loading,4,100.0,,,,36.00,,3,
+,kobra2_neo,data,loading,5,200.0,,,,36.00,,3,
+,kobra2_neo,data,loading,6,500.0,,,,36.00,,3,
+,kobra2_neo,data,unloading,1,500.0,,,,36.00,,3,
+,kobra2_neo,data,unloading,2,200.0,,,,36.00,,3,
+,kobra2_neo,data,unloading,3,100.0,,,,36.00,,3,
+,kobra2_neo,data,unloading,4,50.0,,,,36.00,,3,
+,kobra2_neo,data,unloading,5,20.0,,,,36.00,,3,
+,kobra2_neo,data,unloading,6,0.0,,,,36.00,,3,
+
+# MODE A, dead weight over a pulley. This is the primary rig.
+# The mechanism lies flat, so the pull on the lever is horizontal and a
+# kitchen scale (which weighs vertically) cannot read it. A thread over a
+# pulley at the table edge converts a hanging weight into a horizontal pull.
+#
+# Setup:
+#   - tie thread through the lever hole; keep it at the MID-THICKNESS of the
+#     part so it applies no out-of-plane moment
+#   - run the thread horizontally to a pulley clamped at the table edge
+#   - set the pulley height to the same mid-plane
+#   - record the pulley position in the SAME mm frame as the mechanism
+#     (read it from the camera image, or measure it from the fixture)
+#
+# Procedure: hang each mass, let it settle for a stated time, photograph or
+# film the mechanism, read the input angle from the markers, write it here.
+#
+# The thread direction changes as the lever swings, so the moment arm is not
+# constant: the analysis computes cross(H - A, u) per reading rather than
+# assuming the hole radius.
+#
+# Record settle_time_s: PLA creeps, so the angle depends on how long you wait.
+# The loading/unloading gap is hysteresis PLUS pulley and thread friction.
+# print_purpose: trial while settings are still moving, data once frozen.

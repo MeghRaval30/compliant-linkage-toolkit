@@ -1,0 +1,79 @@
+{
+  "dictionary": "DICT_4X4_50",
+  "pads": [
+    {
+      "name": "base_0",
+      "centre_mm": [
+        3.0,
+        -28.5
+      ],
+      "marker_ids": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "grid": [
+        2,
+        2
+      ],
+      "marker_size_mm": 12.0,
+      "gap_mm": 3.0,
+      "fixed": true
+    },
+    {
+      "name": "base_1",
+      "centre_mm": [
+        64.2990062883991,
+        -28.5
+      ],
+      "marker_ids": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "grid": [
+        2,
+        2
+      ],
+      "marker_size_mm": 12.0,
+      "gap_mm": 3.0,
+      "fixed": true
+    },
+    {
+      "name": "lever",
+      "centre_mm": [
+        -22.669992859955997,
+        -38.872502154216214
+      ],
+      "marker_ids": [
+        8
+      ],
+      "grid": [
+        1,
+        1
+      ],
+      "marker_size_mm": 12.0,
+      "gap_mm": 3.0,
+      "fixed": false
+    },
+    {
+      "name": "coupler",
+      "centre_mm": [
+        83.55337256467163,
+        84.77529376221409
+      ],
+      "marker_ids": [
+        9
+      ],
+      "grid": [
+        1,
+        1
+      ],
+      "marker_size_mm": 12.0,
+      "gap_mm": 3.0,
+      "fixed": false
+    }
+  ]
+}

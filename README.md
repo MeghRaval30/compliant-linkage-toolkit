@@ -11,9 +11,10 @@ compliant counterparts, including paths measured on real FDM-printed parts.
 model and FEA) transfer to FDM-printed parts, and can a learned model close that
 simulation-to-reality gap?
 
-> **Status: Phase A pilot, milestone A4.** Rigid kinematics, flexure sizing and
-> feasibility, design search, the PRBM solver, the nonlinear beam FEA and printable CAD for
-> both coupons and mechanisms all work and are validated. Camera tracking (A5) is next.
+> **Status: Phase A pilot, milestone A5.** Rigid kinematics, flexure sizing and
+> feasibility, design search, the PRBM solver, the nonlinear beam FEA, printable CAD for
+> coupons and mechanisms, and the camera measurement pipeline all work and are validated.
+> What remains is A6: print, film, and produce the demo materials.
 >
 > **No physical measurements exist yet.** Every material constant and the minimum printable
 > flexure thickness are explicitly flagged placeholders, so every feasibility verdict the
@@ -90,6 +91,10 @@ cmtool export examples/designs/fb_02_0052.json   # printable mechanism + print s
 cmtool simulate examples/fourbar.json --csv out/rigid_path.csv
 cmtool prbm-study                                # which PRBM variant fits, from the FEA
 cmtool torque examples/designs/fb_02_0052.json   # predicted torque, and measured comparison
+cmtool markers examples/mechanisms/fb_02_0052_mechanism.json   # printable ArUco sheets
+cmtool calibrate photos/checkerboard --out out/calibration.json
+cmtool track examples/mechanisms/fb_02_0052_mechanism.json clip.mp4 --calibration out/calibration.json
+cmtool uncertainty --circle out/measured_path.csv --radius-mm 40   # the go/no-go
 ```
 
 ## The design rule that governs everything
@@ -163,6 +168,7 @@ src/cmtool/
   cad/         coupons, mechanism CAD, printability checks, STEP/STL, print sheets
   materials/   materials and printers loaded from configs with provenance
   metrics/     torque measurement templates and model comparison
+  vision/      ArUco layout, calibration, plane map, tracking, uncertainty
   schema/      pydantic models; JSON Schema is generated from them
   vision/ metrics/ dataset/ viz/   (later milestones)
 ```

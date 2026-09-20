@@ -8,7 +8,16 @@ import numpy as np
 import pytest
 
 from cmtool import Linkage, convert, simulate
-from cmtool.metrics import compare, read_measurements, write_template
+from cmtool.metrics import (
+    compare,
+    hole_position_mm,
+    moment_arm_mm,
+    read_measurements,
+    read_weight_measurements,
+    weight_to_force_n,
+    write_scale_template,
+    write_weight_template,
+)
 
 pytestmark = pytest.mark.filterwarnings("ignore::cmtool.core.quantities.ProvisionalDataWarning")
 
@@ -95,7 +104,7 @@ class TestMechanismBeamFea:
 
 class TestTorqueTemplate:
     def test_template_has_loading_and_unloading_rows(self, tmp_path):
-        path = write_template(
+        path = write_scale_template(
             tmp_path / "t.csv",
             lever_radius_mm=36.0,
             input_range_deg=(88.0, 102.0),
@@ -114,7 +123,7 @@ class TestTorqueTemplate:
         assert {r["direction"] for r in rows} == {"loading", "unloading"}
 
     def test_template_prefills_the_lever_radius_and_printer(self, tmp_path):
-        path = write_template(
+        path = write_scale_template(
             tmp_path / "t.csv",
             lever_radius_mm=36.0,
             input_range_deg=(88.0, 102.0),
@@ -126,7 +135,7 @@ class TestTorqueTemplate:
         assert "print_purpose" in text
 
     def test_template_explains_the_torque_formula(self, tmp_path):
-        path = write_template(
+        path = write_scale_template(
             tmp_path / "t.csv", lever_radius_mm=36.0, input_range_deg=(88.0, 102.0)
         )
         text = path.read_text(encoding="utf-8")
@@ -237,3 +246,125 @@ class TestTorqueComparison:
         path = tmp_path / "m.csv"
         self._write(path, [["s1", "k", "data", "loading", "95", "2.0", "90", "40", 1, ""]])
         json.dumps(compare(read_measurements(path), {}).to_dict())
+
+
+class TestDeadWeightRig:
+    """Mode A: thread over a pulley, because the pull on a flat mechanism is horizontal."""
+
+    PIVOT = np.array([0.0, 0.0])
+    HOLE = np.array([-36.0, 0.0])
+
+    def test_mass_becomes_tension(self):
+        assert weight_to_force_n(100.0) == pytest.approx(0.980665, rel=1e-9)
+
+    def test_hole_swings_with_the_lever(self):
+        moved = hole_position_mm(self.PIVOT, self.HOLE, 90.0, 0.0)
+        np.testing.assert_allclose(moved, [0.0, -36.0], atol=1e-9)
+        assert np.linalg.norm(moved - self.PIVOT) == pytest.approx(36.0)
+
+    def test_moment_arm_is_the_cross_product_not_the_radius(self):
+        """A thread pulling along the lever exerts no torque, whatever the radius."""
+        along = moment_arm_mm(self.PIVOT, self.HOLE, np.array([-200.0, 0.0]))
+        assert along == pytest.approx(0.0, abs=1e-9)
+
+        perpendicular = moment_arm_mm(self.PIVOT, self.HOLE, np.array([-36.0, 200.0]))
+        assert abs(perpendicular) == pytest.approx(36.0, rel=1e-9)
+
+    def test_moment_arm_changes_as_the_lever_rotates(self):
+        """The reason a fixed radius is not good enough."""
+        pulley = np.array([-150.0, 120.0])
+        arms = [
+            abs(moment_arm_mm(self.PIVOT, hole_position_mm(self.PIVOT, self.HOLE, a, 0.0), pulley))
+            for a in (-20.0, 0.0, 20.0)
+        ]
+        assert max(arms) - min(arms) > 1.0
+
+    def test_pulley_on_the_hole_is_refused(self):
+        with pytest.raises(ValueError, match="cannot sit on the lever hole"):
+            moment_arm_mm(self.PIVOT, self.HOLE, self.HOLE)
+
+    def test_template_has_both_sequences_and_setup_notes(self, tmp_path):
+        path = write_weight_template(
+            tmp_path / "w.csv", hole_radius_mm=36.0, masses_g=(0.0, 50.0), repeats=2
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "hung_mass_g" in text
+        assert "pulley_x_mm" in text
+        assert "MID-THICKNESS" in text
+        assert "moment arm is not" in text
+
+    def test_reading_a_weight_template_resolves_the_moment_arm(self, tmp_path):
+        path = tmp_path / "w.csv"
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(
+                [
+                    "specimen_id",
+                    "printer",
+                    "print_purpose",
+                    "sequence",
+                    "step",
+                    "hung_mass_g",
+                    "measured_input_angle_deg",
+                    "pulley_x_mm",
+                    "pulley_y_mm",
+                    "hole_radius_mm",
+                    "settle_time_s",
+                    "repeat",
+                    "notes",
+                ]
+            )
+            writer.writerow(
+                [
+                    "s1",
+                    "kobra2_neo",
+                    "data",
+                    "loading",
+                    1,
+                    "100",
+                    "0",
+                    "-36.0",
+                    "200.0",
+                    "36.0",
+                    "10",
+                    1,
+                    "",
+                ]
+            )
+        readings = read_weight_measurements(
+            path, pivot_mm=self.PIVOT, hole_mm=self.HOLE, reference_angle_deg=0.0
+        )
+        assert len(readings) == 1
+        assert readings[0].mode == "weight"
+        # 100 g over a perpendicular 36 mm arm.
+        assert abs(readings[0].torque_nmm) == pytest.approx(0.980665 * 36.0, rel=1e-6)
+
+    def test_mode_is_detected_from_the_columns(self, tmp_path):
+        path = tmp_path / "w.csv"
+        write_weight_template(path, hole_radius_mm=36.0, masses_g=(50.0,), repeats=1)
+        readings = read_measurements(
+            path, pivot_mm=self.PIVOT, hole_mm=self.HOLE, reference_angle_deg=0.0
+        )
+        assert readings == []  # blank angles, nothing to read, but no crash
+
+    def test_comparison_reports_angle_residuals_too(self, results):
+        from cmtool.metrics.torque import TorqueReading
+
+        fea = results[1]
+        torque = float(np.max(np.abs(fea.input_torque_nmm)) * 0.5)
+        readings = [
+            TorqueReading(
+                input_angle_deg=float(fea.input_angles_deg[-1]),
+                torque_nmm=torque,
+                direction="loading",
+                mode="weight",
+            )
+        ]
+        comparison = compare(readings, {"beam_fea": (fea.input_angles_deg, fea.input_torque_nmm)})
+        assert comparison.mode == "weight"
+        assert "beam_fea" in comparison.angle_errors
+        assert comparison.angle_errors["beam_fea"]["n_in_range"] == 1
+
+    def test_hysteresis_is_labelled_as_including_rig_friction(self):
+        payload = compare([], {}).to_dict()
+        assert "rig friction" in payload["hysteresis_note"]
