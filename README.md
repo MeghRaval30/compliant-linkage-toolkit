@@ -11,9 +11,10 @@ compliant counterparts, including paths measured on real FDM-printed parts.
 model and FEA) transfer to FDM-printed parts, and can a learned model close that
 simulation-to-reality gap?
 
-> **Status: Phase A pilot, milestone A2.** Rigid four-bar kinematics, flexure sizing with
-> feasibility checking, design search and CAD export all work and are validated. PRBM (A3),
-> beam FEA (A4) and camera tracking (A5) are next.
+> **Status: Phase A pilot, milestone A3.** Rigid four-bar kinematics, flexure sizing and
+> feasibility, design search, the PRBM quasi-static solver and printable CAD for both the
+> test coupons and the mechanisms all work and are validated. Beam FEA (A4) and camera
+> tracking (A5) are next.
 >
 > **No physical measurements exist yet.** Every material constant and the minimum printable
 > flexure thickness are explicitly flagged placeholders, so every feasibility verdict the
@@ -31,7 +32,7 @@ uv sync --extra dev --extra cad
 
 ## Print these first
 
-Two coupons measure the numbers everything else depends on. They are committed under
+Four coupons measure the numbers everything else depends on. They are committed under
 [`examples/coupons/`](examples/coupons/) with print sheets, or regenerate them with:
 
 ```bash
@@ -45,6 +46,13 @@ cmtool coupons --out out/coupons
   modulus test. Two thicknesses deliberately: if a 1 mm strip (nearly all perimeter) and a
   2 mm strip (with infill) give different moduli, then a modulus measured on a thick strip
   does not transfer to a 0.5 mm flexure.
+- **`strain_mandrels` + `strain_strips`** — strips wrapped around posts of decreasing radius
+  to measure the allowable strain, `(t/2)/(R + t/2)`, spanning about 0.008 to 0.057. Check
+  whitening, cracking and permanent set on one bend and again after ten cycles;
+  `strain_test_template.csv` has a row per combination with the strain pre-filled. The
+  strips are printed as upright walls and the posts are vertical, so the strip bends
+  **in-plane** like a real flexure — bent the other way, the test would measure interlayer
+  adhesion instead.
 
 Each print sheet carries the Bambu Studio settings and the metadata checklist to fill in at
 the machine. The setting that matters most is the **Arachne** wall generator — the classic
@@ -56,7 +64,7 @@ in this project.
 ```python
 from cmtool import Linkage, simulate, convert, fit_input_arc
 
-mech = Linkage.from_json("examples/designs/fb_01_0077.json")
+mech = Linkage.from_json("examples/designs/fb_02_0052.json")
 
 arc = fit_input_arc(mech, max_joint_excursion_deg=22.0)   # flexures cannot rotate far
 cm = convert(mech, material="PLA", printer="bambu_a1", input_range_deg=arc.input_range_deg)
@@ -64,24 +72,32 @@ cm = convert(mech, material="PLA", printer="bambu_a1", input_range_deg=arc.input
 cm.feasibility.feasible          # can this be built out of flexures?
 cm.feasibility.binding_joint     # which joint is limiting the design
 cm.sizing["B"].limit_reason      # and why, in words
+cm.feasibility.prbm_models       # which PRBM model each joint needs (metadata, not a filter)
+
+res = simulate(cm, solver="prbm", n_steps=61)
+res.input_torque_nmm             # torque to hold each input angle
+res.flexure_strain["B"]          # strain in joint B's flexure along the arc
 ```
 
 From the command line:
 
 ```bash
-cmtool design --seed 1 --out out/designs        # search for buildable four-bars
-cmtool convert examples/designs/fb_01_0077.json # per-joint feasibility table
+cmtool coupons --out out/coupons                 # test coupons + print sheets
+cmtool design --seed 2 --out out/designs         # search for buildable four-bars
+cmtool convert examples/designs/fb_02_0052.json  # per-joint feasibility table
+cmtool export examples/designs/fb_02_0052.json   # printable mechanism + print sheet
 cmtool simulate examples/fourbar.json --csv out/rigid_path.csv
 ```
 
 ## The design rule that governs everything
 
-Two constraints act on a small-length flexural pivot at once, and they pull opposite ways.
-Strain wants a long flexure, `L ≥ t·θ/(2·ε_allow)`. Validity of the pseudo-rigid-body model
-wants a short one, `L ≤ r·l`, where `l` is the shorter adjacent link. Eliminating `L`:
+Two constraints act on a flexure at once, and they pull opposite ways. Strain wants it
+long, `L ≥ t·θ/(2·ε_allow)`. Geometry wants it short — a flexure is a necked-down part of a
+link, so rigid material must remain at each end — `L ≤ f·l`, with `f = 0.8` and `l` the
+shorter adjacent link. Eliminating `L`:
 
 ```
-θ_max = 2·r·l·ε_allow / (t·SF)
+θ_max = 2·f·l·ε_allow / (t·SF)
 ```
 
 The largest usable joint rotation is set by **the length of the neighbouring link**, not by
@@ -89,10 +105,18 @@ anything about the flexure alone. Short links cannot carry large rotations at an
 so a classic crank-rocker with a stubby crank is exactly the wrong shape for a compliant
 mechanism.
 
-This is not theoretical: the pilot four-bar from milestone A1 has an 18 mm input link and
-turns out to be unbuildable — it needs a 7.25 mm flexure to survive a 9.2° bend, but validity
-caps it at 1.8 mm. `cmtool convert` says so, and names the joint. The three designs in
-[`examples/designs/`](examples/designs/) were found by searching for link lengths that work.
+**Pseudo-rigid-body validity is not in that bound, deliberately.** The length ratio
+`L/l` selects which PRBM model represents a flexure — the centre-pivot model below 0.1,
+Howell's long-segment model above — and is recorded on every sample. It never rejects a
+design. Phase C's fidelity map is a map of where the simple model fails, so filtering those
+designs out would hide the result it exists to show.
+
+That distinction is not academic. While the 0.1 ratio was being enforced as a constraint,
+the A1 pilot four-bar was reported unbuildable. It is not: under the real rule it builds
+fine, three of its four joints simply need the long-segment model. The old rule was also 8×
+tighter than physics requires. The designs in [`examples/designs/`](examples/designs/) and
+their printable parts in [`examples/mechanisms/`](examples/mechanisms/) come from the
+corrected search.
 
 Two decisions each buy a factor of two, for free:
 
@@ -130,9 +154,9 @@ src/cmtool/
   core/        linkage graph, units, registries, provenance, config, quantities
   kinematics/  position solvers, dispatched by topology
   solvers/     rigid | prbm | beam_fea | solid_fea -> one SimulationResult type
-  flexures/    geometry + PRBM stiffness + each type's OWN strain model
+  flexures/    geometry, PRBM models (small-length and Howell), own strain model
   convert/     arc fitting, flexure sizing, feasibility, design search
-  cad/         coupons, printability checks, STEP/STL export, print sheets
+  cad/         coupons, mechanism CAD, printability checks, STEP/STL, print sheets
   materials/   materials and printers loaded from configs with provenance
   schema/      pydantic models; JSON Schema is generated from them
   vision/ metrics/ dataset/ viz/   (later milestones)

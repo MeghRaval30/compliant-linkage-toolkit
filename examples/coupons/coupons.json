@@ -34,5 +34,31 @@
       102.0,
       100.0
     ]
+  },
+  "strain_mandrels": {
+    "mandrel_radii_mm": [
+      5.0,
+      7.5,
+      10.0,
+      15.0,
+      20.0,
+      25.0
+    ],
+    "post_height_mm": 10.0,
+    "strain_range": [
+      0.007936507936507938,
+      0.05660377358490566
+    ]
+  },
+  "strain_strips": {
+    "thicknesses_mm": [
+      0.4,
+      0.5,
+      0.6
+    ],
+    "repeats": 2,
+    "strip_count": 6,
+    "length_mm": 110.0,
+    "height_mm": 6.0
   }
 }

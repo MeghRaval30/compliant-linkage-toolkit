@@ -186,11 +186,12 @@ def convert_cmd(
         "max bend",
         "L chosen",
         "L strain min",
-        "L prbm max",
+        "L geom max",
         "peak strain",
         "util",
     ):
         table.add_column(column, justify="right")
+    table.add_column("PRBM model")
     table.add_column("ok")
 
     for name, sized in mech.sizing.items():
@@ -200,9 +201,10 @@ def convert_cmd(
             f"{sized.max_bend_deg:.2f}",
             f"{sized.geometry.length_mm:.2f}",
             f"{sized.min_length_strain_mm:.2f}",
-            f"{sized.max_length_prbm_mm:.2f}",
+            f"{sized.max_length_geometric_mm:.2f}",
             f"{sized.strain.peak_strain:.5f}",
             f"{sized.utilisation:.2f}",
+            sized.validity.model,
             "[green]yes[/]" if sized.feasible else "[red]NO[/]",
         )
     console.print(table)
@@ -215,6 +217,8 @@ def convert_cmd(
     )
     for reason in report.reasons():
         console.print(f"  [red]{reason}[/]")
+    for note in report.prbm_notes():
+        console.print(f"  [dim]{note}[/]")
 
     caveat = mech.provenance.caveat()
     if caveat:
@@ -249,6 +253,20 @@ def coupons(
     meta = coupon_set.metadata()
 
     purposes = {
+        "strain_mandrels": (
+            "Measure the allowable bending strain. Wrap a test strip around each post and "
+            "look for whitening, cracking and permanent set -- first on a single bend, then "
+            "after ten cycles. The strain a post imposes is (t/2)/(R + t/2), so the posts "
+            "cover roughly 0.008 to 0.057 strain across the three strip thicknesses. The "
+            "largest strain that still passes after ten cycles sets `allowable_strain`, "
+            "which is the number that decides how far every flexure in the project may bend."
+        ),
+        "strain_strips": (
+            "The strips for the mandrel test. They are printed as upright thin walls, not "
+            "flat: a flexure bends in-plane, so a strip must bend about the same axis or the "
+            "test measures interlayer adhesion instead of the property we need. Print with a "
+            "brim -- these are tall, thin and free-standing."
+        ),
         "flexure_coupon": (
             "Find the minimum flexure thickness this printer can produce consistently. "
             "Print it, measure every strip with calipers, then bend each one by hand. The "
@@ -266,6 +284,24 @@ def coupons(
         ),
     }
     instructions = {
+        "strain_mandrels": [
+            "Print the mandrel block and the strips together, from the same spool.",
+            "Measure each strip's thickness with calipers before bending anything: the "
+            "strain depends on the as-printed thickness, not the nominal one.",
+            "Start at the largest post (lowest strain) and work down.",
+            "Wrap a strip about 90 degrees around the post, hold for five seconds, release.",
+            "Record whitening, any crack, and the permanent set angle after release.",
+            "Repeat the same strip and post ten times, then record the same three things.",
+            "Mark each strip and post combination pass, marginal or fail in the CSV.",
+            "The largest nominal strain that still passes after ten cycles, across every "
+            "repeat, is the allowable strain. Put it in configs/materials/pla.yaml with "
+            "status: measured and the date.",
+            "Fill in strain_test_template.csv as you go; it already has the nominal strains.",
+        ],
+        "strain_strips": [
+            "Print with a brim. These are free-standing thin walls and will topple without one.",
+            "Keep them with the mandrel block: they are one experiment.",
+        ],
         "flexure_coupon": [
             "Print flat on the bed with the settings in the table above. No supports.",
             "Photograph the plate before touching it, and note any strip that failed to print.",
@@ -291,15 +327,17 @@ def coupons(
         ],
     }
 
+    thin_parts = {
+        "flexure_coupon": min(coupon_set.flexure_spec.thicknesses_mm),
+        "strain_strips": min(coupon_set.strain_spec.strip_thicknesses_mm),
+    }
     for stem, solid in solids.items():
-        min_feature = (
-            min(coupon_set.flexure_spec.thicknesses_mm) if stem == "flexure_coupon" else None
-        )
+        min_feature = thin_parts.get(stem)
         check = check_printability(
             solid,
             printer_cfg,
             min_feature_mm=min_feature,
-            allow_below_minimum=(stem == "flexure_coupon"),
+            allow_below_minimum=stem in thin_parts,
         )
         paths = export_solid(solid, out, stem)
         sheet = write_print_sheet(
@@ -324,6 +362,12 @@ def coupons(
     meta_path = Path(out) / "coupons.json"
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     console.print(f"wrote {meta_path}")
+
+    from cmtool.cad.coupons import strain_data_template
+
+    template = Path(out) / "strain_test_template.csv"
+    template.write_text(strain_data_template(coupon_set.strain_spec), encoding="utf-8")
+    console.print(f"wrote {template}")
 
 
 @app.command()
@@ -398,9 +442,125 @@ def generate() -> None:
 
 
 @app.command()
-def export() -> None:
-    """Export CAD for a full compliant mechanism (milestone A2, in progress)."""
-    _not_yet("A2", "monolithic mechanism CAD export")
+def export(
+    linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/mechanisms"),
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+    thickness_mm: Annotated[
+        float | None, typer.Option(help="Flexure thickness; default is the printer minimum")
+    ] = None,
+    fit_arc: Annotated[
+        bool, typer.Option(help="Shrink the input arc to meet the excursion target")
+    ] = True,
+    target_excursion_deg: Annotated[
+        float, typer.Option(help="Ceiling for the worst joint excursion")
+    ] = 22.0,
+    link_width_mm: Annotated[float, typer.Option(help="Rigid link width")] = 8.0,
+    lever_length_mm: Annotated[float, typer.Option(help="Input lever length")] = 45.0,
+) -> None:
+    """Export the printable monolithic part for a compliant mechanism."""
+    from cmtool.api import convert as convert_api
+    from cmtool.cad import check_printability, export_solid, write_print_sheet
+    from cmtool.cad.mechanism import MechanismCadSpec, build_mechanism
+    from cmtool.convert.arc import ArcFitError, fit_input_arc
+    from cmtool.materials import Material, Printer
+
+    linkage = Linkage.from_json(linkage_json)
+    arc = linkage.input_range_deg
+    if fit_arc:
+        try:
+            fit = fit_input_arc(linkage, max_joint_excursion_deg=target_excursion_deg)
+        except ArcFitError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from exc
+        arc = fit.input_range_deg
+
+    mech = convert_api(
+        linkage,
+        material=material,
+        printer=printer,
+        input_range_deg=arc,
+        thickness_mm=thickness_mm,
+    )
+    if not mech.feasibility.feasible:
+        console.print(
+            f"[red]not feasible[/]: joint {mech.feasibility.binding_joint} -- "
+            f"{mech.sizing[mech.feasibility.binding_joint].limit_reason}"
+        )
+        raise typer.Exit(code=1)
+
+    printer_cfg = Printer.load(printer)
+    material_cfg = Material.load(material)
+    spec = MechanismCadSpec(link_width_mm=link_width_mm, lever_length_mm=lever_length_mm)
+    solid, layout = build_mechanism(mech, spec=spec, printer=printer_cfg)
+
+    thinnest = min(s.geometry.thickness_mm for s in mech.sizing.values())
+    check = check_printability(solid, printer_cfg, min_feature_mm=thinnest)
+    stem = linkage.name
+    paths = export_solid(solid, out, stem)
+
+    details: dict[str, object] = {
+        "input arc (deg)": (f"{mech.input_range_deg[0]:.2f} to {mech.input_range_deg[1]:.2f}"),
+        "printed unstressed at (deg)": f"{mech.reference_input_deg:.2f}",
+        "flexure thickness (mm)": thinnest,
+        "flexure lengths (mm)": {n: round(s.geometry.length_mm, 2) for n, s in mech.sizing.items()},
+        "joint excursions (deg)": {n: round(s.excursion_deg, 2) for n, s in mech.sizing.items()},
+        "PRBM model per joint": mech.feasibility.prbm_models,
+        "all small-length": mech.feasibility.all_small_length,
+        "fiducial pad spacing (mm)": round(layout.fiducial_spacing_mm, 2),
+        "marker pad plane z (mm)": layout.pad_plane_z_mm,
+        "bolt holes (mm)": [[round(x, 2), round(y, 2)] for x, y in layout.bolt_holes_mm],
+    }
+    instructions = [
+        "Print flat on the bed: the mechanism plane goes parallel to the bed so the "
+        "flexures bend in-plane.",
+        "No supports. Support material on a flexure ruins its surface.",
+        "Check every flexure under a bright light before flexing anything, and photograph "
+        "the part before first use.",
+        "Bolt the base to the fixture with M3 before applying any load to the lever.",
+        "Stick the ArUco markers on the raised pads. All pads are coplanar, which the "
+        "camera homography depends on.",
+        "Move the lever gently by hand through the stated arc; do not force it past either end.",
+    ]
+    sheet = write_print_sheet(
+        Path(out) / f"{stem}_print_sheet.md",
+        title=f"compliant mechanism {stem}",
+        printer=printer_cfg,
+        material=material_cfg,
+        purpose=(
+            "The first printed compliant mechanism. Its measured coupler path is what the "
+            "rigid, PRBM and FEA predictions get compared against."
+        ),
+        check=check,
+        details=details,
+        instructions=instructions,
+    )
+
+    report = {
+        "conversion": mech.summary(),
+        "layout": layout.to_dict(),
+        "printability": check.to_dict(),
+        "provenance": mech.provenance.to_dict(),
+    }
+    report_path = Path(out) / f"{stem}_mechanism.json"
+    report_path.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
+
+    size = check.bounding_box_mm
+    status = "[green]OK[/]" if check.ok else "[red]DOES NOT FIT[/]"
+    console.print(
+        f"{stem}: {status}  {size[0]:.0f} x {size[1]:.0f} x {size[2]:.0f} mm  -> "
+        f"{paths['step'].name}, {paths['stl'].name}, {sheet.name}, {report_path.name}"
+    )
+    for note in check.notes:
+        console.print(f"    [yellow]{note}[/]")
+    for warning in layout.warnings:
+        console.print(f"    [yellow]{warning}[/]")
+    for note in mech.feasibility.prbm_notes():
+        console.print(f"    [dim]{note}[/]")
+    caveat = mech.provenance.caveat()
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
 
 
 @app.command()

@@ -27,10 +27,24 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Literal
 
-Status = Literal["measured", "vendor", "design_choice", "confirmed", "placeholder"]
+Status = Literal[
+    "measured",
+    "vendor",
+    "literature",
+    "design_choice",
+    "confirmed",
+    "placeholder",
+]
 
 #: Statuses that represent a real, defensible number.
-REAL_STATUSES: frozenset[str] = frozenset({"measured", "vendor", "design_choice", "confirmed"})
+#:
+#: ``literature`` covers published model constants such as the PRBM
+#: characteristic radius factor. They are somebody's result, not ours and not a
+#: guess, so they are usable and reportable -- but they must carry a citation, and
+#: where they have not yet been checked against our own solver the config says so.
+REAL_STATUSES: frozenset[str] = frozenset(
+    {"measured", "vendor", "literature", "design_choice", "confirmed"}
+)
 
 
 class ProvisionalDataWarning(UserWarning):

@@ -3,20 +3,29 @@
 The feasibility model is deliberately simple and explicit, because its job is to
 explain *why* a design fails, not just that it did.
 
-For each joint, two lengths are computed:
+Two hard limits, and one piece of metadata that is emphatically **not** a limit:
 
-``L_strain``
-    the shortest flexure that can take the required bend within the allowable
-    strain, ``t * theta / (2 eps_allow)``, times a safety factor.
+``L_strain`` (hard, physical)
+    The shortest flexure that can take the required bend within the allowable
+    strain: ``t * theta / (2 eps_allow)``, times a safety factor. Exceed the
+    strain and the part breaks.
 
-``L_prbm``
-    the longest flexure that still counts as "small-length",
-    ``ratio_limit * (shorter adjacent link)``.
+``L_geometric`` (hard, physical)
+    The longest flexure that physically fits. A flexure is a necked-down section
+    of a link, so rigid material has to remain at each end: a fraction of the
+    shorter adjacent link.
 
-A joint is feasible when ``L_strain <= L_prbm``. Their ratio is the joint's
+``length_ratio`` (metadata, NOT a filter)
+    ``L_flexure / L_link``, which selects the pseudo-rigid-body model: the
+    small-length centre-pivot model below the limit, Howell's long-segment model
+    above it. It is recorded on every sample and never rejects a design. Phase
+    C's fidelity map is a map of where the simple model fails, so filtering those
+    designs out would hide the result it exists to show. Where the simple model
+    does not apply, beam FEA is the reference.
+
+A joint is feasible when ``L_strain <= L_geometric``. Their ratio is the joint's
 **utilisation**, and the joint with the highest utilisation is the one limiting
-the design. That is the number to report to a designer: it says which joint to
-fix and by how much.
+the design: the number that tells a designer which joint to fix.
 """
 
 from __future__ import annotations
@@ -44,7 +53,7 @@ class JointSizing:
     excursion_deg: float
     shortest_adjacent_link_mm: float
     min_length_strain_mm: float
-    max_length_prbm_mm: float
+    max_length_geometric_mm: float
     strain: StrainEstimate
     validity: PrbmValidity
     stiffness_nmm_per_rad: float
@@ -58,10 +67,15 @@ class JointSizing:
 
     @property
     def utilisation(self) -> float:
-        """``L_strain / L_prbm``. Above 1.0 the joint cannot be built as specified."""
-        if self.max_length_prbm_mm <= 0.0:
+        """``L_strain / L_geometric``. Above 1.0 the joint cannot be built as specified."""
+        if self.max_length_geometric_mm <= 0.0:
             return float("inf")
-        return self.min_length_strain_mm / self.max_length_prbm_mm
+        return self.min_length_strain_mm / self.max_length_geometric_mm
+
+    @property
+    def prbm_model(self) -> str:
+        """Which pseudo-rigid-body model represents this flexure."""
+        return self.validity.model
 
     @property
     def strain_ok(self) -> bool:
@@ -69,27 +83,29 @@ class JointSizing:
         return self.geometry.length_mm >= self.min_length_strain_mm - 1e-12
 
     @property
-    def prbm_ok(self) -> bool:
-        """Whether the chosen length stays inside the PRBM validity envelope."""
-        return self.geometry.length_mm <= self.max_length_prbm_mm + 1e-12
+    def fits_geometrically(self) -> bool:
+        """Whether the flexure physically fits within its link."""
+        return self.geometry.length_mm <= self.max_length_geometric_mm + 1e-12
 
     @property
     def feasible(self) -> bool:
-        """Whether this joint satisfies both constraints at once."""
-        return self.strain_ok and self.prbm_ok
+        """Whether this joint satisfies both hard limits at once.
+
+        PRBM validity is deliberately absent: it is metadata, not a constraint.
+        """
+        return self.strain_ok and self.fits_geometrically
 
     @property
     def limit_reason(self) -> str | None:
         """Why this joint fails, or ``None`` if it does not."""
         if self.feasible:
             return None
-        if not self.prbm_ok:
+        if not self.fits_geometrically:
             return (
                 f"needs L >= {self.min_length_strain_mm:.2f} mm for "
-                f"{self.max_bend_deg:.1f} deg of bend, but PRBM validity caps it at "
-                f"{self.max_length_prbm_mm:.2f} mm "
-                f"({self.validity.length_ratio_limit:g} x the "
-                f"{self.shortest_adjacent_link_mm:.1f} mm adjacent link)"
+                f"{self.max_bend_deg:.1f} deg of bend, but only "
+                f"{self.max_length_geometric_mm:.2f} mm fits on the "
+                f"{self.shortest_adjacent_link_mm:.1f} mm adjacent link"
             )
         return (
             f"peak strain {self.strain.peak_strain:.4f} exceeds the allowable at "
@@ -109,12 +125,13 @@ class JointSizing:
             "peak_strain": self.strain.peak_strain,
             "strain_model": self.strain.model,
             "min_length_strain_mm": self.min_length_strain_mm,
-            "max_length_prbm_mm": self.max_length_prbm_mm,
-            "prbm_length_ratio": self.validity.length_ratio,
+            "max_length_geometric_mm": self.max_length_geometric_mm,
             "stiffness_nmm_per_rad": self.stiffness_nmm_per_rad,
             "utilisation": self.utilisation,
             "feasible": self.feasible,
             "limit_reason": self.limit_reason,
+            "prbm": self.validity.to_dict(),
+            "prbm_notes": self.validity.notes(),
         }
 
 
@@ -125,7 +142,7 @@ class FeasibilityReport:
     joints: dict[str, JointSizing]
     allowable_strain: float
     strain_safety_factor: float
-    length_ratio_limit: float
+    max_length_fraction: float
 
     @property
     def feasible(self) -> bool:
@@ -141,6 +158,30 @@ class FeasibilityReport:
     def max_utilisation(self) -> float:
         """Utilisation of the binding joint."""
         return self.joints[self.binding_joint].utilisation
+
+    @property
+    def all_small_length(self) -> bool:
+        """Whether every flexure sits inside the simple model's regime.
+
+        Phase A prefers these for its pilot prints; the dataset keeps the others,
+        because they are where the fidelity map gets its signal.
+        """
+        return all(j.validity.is_small_length for j in self.joints.values())
+
+    @property
+    def prbm_models(self) -> dict[str, str]:
+        """Which PRBM model represents each joint."""
+        return {name: j.validity.model for name, j in self.joints.items()}
+
+    def prbm_notes(self) -> list[str]:
+        """Caveats about the PRBM representation, across all joints."""
+        seen: list[str] = []
+        for name, sizing in self.joints.items():
+            for note in sizing.validity.notes():
+                line = f"{name}: {note}"
+                if line not in seen:
+                    seen.append(line)
+        return seen
 
     def reasons(self) -> list[str]:
         """One line per infeasible joint."""
@@ -158,9 +199,12 @@ class FeasibilityReport:
             "max_utilisation": self.max_utilisation,
             "allowable_strain": self.allowable_strain,
             "strain_safety_factor": self.strain_safety_factor,
-            "prbm_length_ratio_limit": self.length_ratio_limit,
+            "max_length_fraction": self.max_length_fraction,
+            "all_small_length": self.all_small_length,
+            "prbm_models": self.prbm_models,
             "joints": {name: s.to_dict() for name, s in self.joints.items()},
             "reasons": self.reasons(),
+            "prbm_notes": self.prbm_notes(),
         }
 
 

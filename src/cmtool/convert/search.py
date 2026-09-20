@@ -34,7 +34,7 @@ from cmtool.convert.naive import DEFAULT_STRAIN_SAFETY_FACTOR, NaiveStrategy
 from cmtool.core.graph import Linkage, LinkageError
 from cmtool.core.provenance import Provenance
 from cmtool.core.units import FloatArray
-from cmtool.flexures.slfp import DEFAULT_LENGTH_RATIO_LIMIT
+from cmtool.flexures.prbm_models import max_length_fraction_of_link
 from cmtool.kinematics.fourbar import (
     AssemblyError,
     identify_four_bar,
@@ -44,6 +44,13 @@ from cmtool.materials.loader import Material, Printer
 
 #: Transmission angle window, in degrees. Outside it a linkage transmits force badly.
 DEFAULT_TRANSMISSION_WINDOW_DEG = (40.0, 140.0)
+
+#: Space the printed part needs around the bare linkage, in mm: base plate depth
+#: plus its margin, which is set by the fiducial pad size. Measured from
+#: :class:`~cmtool.cad.mechanism.MechanismCadSpec` defaults rather than guessed --
+#: the first mechanism CAD came out 205 mm tall against a 180 mm bed because this
+#: allowance was too small.
+DEFAULT_CAD_OVERHEAD_MM = 60.0
 
 
 @dataclass
@@ -140,7 +147,7 @@ def evaluate(
     max_joint_excursion_deg: float = 22.0,
     min_joint_excursion_deg: float = 12.0,
     envelope_mm: tuple[float, float] = (180.0, 180.0),
-    envelope_margin_mm: float = 25.0,
+    envelope_margin_mm: float = DEFAULT_CAD_OVERHEAD_MM,
     transmission_window_deg: tuple[float, float] = DEFAULT_TRANSMISSION_WINDOW_DEG,
     n_steps: int = 41,
     **convert_options: Any,
@@ -155,8 +162,8 @@ def evaluate(
         Floor below which the design is rejected as not worth printing: a
         mechanism that barely moves cannot show a measurable sim-to-real gap.
     envelope_mm, envelope_margin_mm
-        Print envelope and the allowance left for the base mount, marker pads and
-        flexure geometry around the bare linkage.
+        Print envelope, and the space the printed part needs around the bare
+        linkage for its base mount, fiducial pads and input lever.
     """
     candidate = Candidate(linkage=linkage)
     usable = (envelope_mm[0] - envelope_margin_mm, envelope_mm[1] - envelope_margin_mm)
@@ -290,7 +297,7 @@ def sampling_link_floor_mm(
     printer: str = "bambu_a1",
     thickness_mm: float | None = None,
     unstressed_at: str = "mid_arc",
-    length_ratio_limit: float = DEFAULT_LENGTH_RATIO_LIMIT,
+    max_length_fraction: float | None = None,
     strain_safety_factor: float = DEFAULT_STRAIN_SAFETY_FACTOR,
     provenance: Provenance | None = None,
 ) -> float:
@@ -313,7 +320,11 @@ def sampling_link_floor_mm(
         thickness,
         material_cfg.allowable_strain(provenance),
         unstressed_at=unstressed_at,
-        length_ratio_limit=length_ratio_limit,
+        max_length_fraction=(
+            max_length_fraction
+            if max_length_fraction is not None
+            else max_length_fraction_of_link(provenance)
+        ),
         strain_safety_factor=strain_safety_factor,
     )
 
@@ -322,12 +333,14 @@ def search(
     *,
     n_candidates: int = 400,
     seed: int = 0,
-    link_range_mm: tuple[float, float] = (55.0, 120.0),
+    link_range_mm: tuple[float, float] = (35.0, 85.0),
     coupler_offset_range: tuple[float, float] = (0.25, 0.75),
     coupler_height_range_mm: tuple[float, float] = (10.0, 45.0),
     max_joint_excursion_deg: float = 22.0,
     envelope_mm: tuple[float, float] = (180.0, 180.0),
+    envelope_margin_mm: float = DEFAULT_CAD_OVERHEAD_MM,
     keep: int = 3,
+    prefer_prbm_valid: bool = True,
     **evaluate_options: Any,
 ) -> SearchReport:
     """Sample four-bars and return the best feasible ones plus rejection counts.
@@ -385,6 +398,7 @@ def search(
             linkage,
             max_joint_excursion_deg=max_joint_excursion_deg,
             envelope_mm=envelope_mm,
+            envelope_margin_mm=envelope_margin_mm,
             **evaluate_options,
         )
         if candidate.ok:
@@ -393,7 +407,7 @@ def search(
             key = candidate.rejected_code or "unknown"
             reasons[key] = reasons.get(key, 0) + 1
 
-    kept.sort(key=_design_score, reverse=True)
+    kept.sort(key=lambda c: _design_score(c, prefer_prbm_valid=prefer_prbm_valid), reverse=True)
     return SearchReport(
         kept=kept[:keep],
         reasons=reasons,
@@ -403,18 +417,27 @@ def search(
     )
 
 
-def _design_score(candidate: Candidate) -> float:
+def _design_score(candidate: Candidate, *, prefer_prbm_valid: bool = True) -> float:
     """Rank by delivered motion per unit of flexure utilisation.
 
     Prefers designs that move a lot while leaving margin in their flexures,
     because those are the ones most likely to survive a real print and still show
     a measurable path.
+
+    ``prefer_prbm_valid`` adds a bonus for designs whose flexures all sit inside
+    the small-length regime. It is a **preference, not a filter**: Phase A wants
+    simple, well-understood pilot prints, while the dataset needs the harder cases
+    where the simple model fails. Ranking gets the first without excluding the
+    second.
     """
     if candidate.compliant is None:
         return -np.inf
     excursion = max(candidate.excursions_deg.values()) if candidate.excursions_deg else 0.0
     utilisation = max(candidate.compliant.feasibility.max_utilisation, 1e-6)
-    return float(excursion / utilisation)
+    score = excursion / utilisation
+    if prefer_prbm_valid and candidate.compliant.feasibility.all_small_length:
+        score *= 1.5
+    return float(score)
 
 
 def _place_coupler_point(linkage: Linkage, offset: float, height_mm: float) -> Linkage:

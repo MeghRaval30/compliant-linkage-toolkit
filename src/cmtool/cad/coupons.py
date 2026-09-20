@@ -179,7 +179,208 @@ def build_cantilever_coupon(spec: CantileverCouponSpec | None = None) -> cq.Work
     return cq.Workplane("XY").newObject([cq.Compound.makeCompound(strips)])
 
 
-def coupon_metadata(flexure: FlexureCouponSpec, cantilever: CantileverCouponSpec) -> dict[str, Any]:
+#: Mandrel radii, in mm. Chosen so a 0.4-0.6 mm strip spans roughly 0.008 to 0.06
+#: strain: from comfortably safe to certainly failing.
+DEFAULT_MANDREL_RADII_MM = (5.0, 7.5, 10.0, 15.0, 20.0, 25.0)
+
+#: Strip thicknesses for the strain test, in mm.
+DEFAULT_STRAIN_STRIP_THICKNESSES_MM = (0.4, 0.5, 0.6)
+
+
+def bend_strain(thickness_mm: float, radius_mm: float) -> float:
+    """Peak surface strain of a strip of thickness ``t`` wrapped on radius ``R``.
+
+    The inner face sits at ``R`` and the neutral axis at ``R + t/2``, so the outer
+    fibre strain is
+
+    ``eps = (t / 2) / (R + t / 2)``
+
+    The familiar ``t / (2R)`` is the thin-strip limit of this, and it overstates
+    the strain by about 6 percent at the tightest radius here -- enough to matter
+    when the number being measured *is* the strain limit.
+    """
+    if thickness_mm <= 0.0 or radius_mm <= 0.0:
+        raise ValueError("thickness and radius must be positive")
+    return (thickness_mm / 2.0) / (radius_mm + thickness_mm / 2.0)
+
+
+@dataclass(frozen=True)
+class StrainCouponSpec:
+    """Mandrels and strips for measuring the allowable strain.
+
+    Why the geometry is what it is
+    ------------------------------
+    A flexure bends **in-plane**: its thickness lies in XY and its width runs
+    out-of-plane along Z, so bending puts stress along the extrusion direction,
+    not across layer boundaries.
+
+    A test strip must bend the same way or it measures the wrong thing. Printed
+    flat and bent over a horizontal bar, a strip is loaded across its layers and
+    what gets measured is interlayer adhesion -- a different, usually much lower,
+    failure strain. So the strips here are printed as thin upright walls, exactly
+    like a flexure, and the mandrels are **vertical posts** they wrap around in
+    the plane of the bed.
+    """
+
+    mandrel_radii_mm: tuple[float, ...] = DEFAULT_MANDREL_RADII_MM
+    strip_thicknesses_mm: tuple[float, ...] = DEFAULT_STRAIN_STRIP_THICKNESSES_MM
+    repeats: int = 2
+    strip_length_mm: float = 110.0
+    strip_height_mm: float = 6.0
+    tab_length_mm: float = 20.0
+    tab_width_mm: float = 10.0
+    post_height_mm: float = 10.0
+    base_thickness_mm: float = 4.0
+    gap_mm: float = 10.0
+    strip_pitch_mm: float = 14.0
+
+    @property
+    def rows(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+        """Split the mandrels into two rows so the block fits the bed."""
+        half = len(self.mandrel_radii_mm) // 2
+        return self.mandrel_radii_mm[:half], self.mandrel_radii_mm[half:]
+
+    def strain_table(self) -> list[dict[str, float]]:
+        """Nominal strain for every strip thickness on every mandrel."""
+        return [
+            {
+                "thickness_mm": thickness,
+                "radius_mm": radius,
+                "nominal_strain": bend_strain(thickness, radius),
+            }
+            for thickness in self.strip_thicknesses_mm
+            for radius in self.mandrel_radii_mm
+        ]
+
+    def strip_count(self) -> int:
+        """Total number of test strips."""
+        return len(self.strip_thicknesses_mm) * self.repeats
+
+
+def build_strain_mandrels(spec: StrainCouponSpec | None = None) -> cq.Workplane:
+    """Build the block of vertical mandrel posts."""
+    spec = spec or StrainCouponSpec()
+    row_a, row_b = spec.rows
+
+    def row_width(radii: tuple[float, ...]) -> float:
+        return sum(2.0 * r for r in radii) + spec.gap_mm * (len(radii) + 1)
+
+    width = max(row_width(row_a), row_width(row_b))
+    depth = (
+        3.0 * spec.gap_mm
+        + 2.0 * (max(row_a) if row_a else 0.0)
+        + 2.0 * (max(row_b) if row_b else 0.0)
+    )
+
+    solid = (
+        cq.Workplane("XY")
+        .moveTo(width / 2.0, depth / 2.0)
+        .rect(width, depth)
+        .extrude(spec.base_thickness_mm)
+    )
+
+    y_a = spec.gap_mm + (max(row_a) if row_a else 0.0)
+    y_b = depth - spec.gap_mm - (max(row_b) if row_b else 0.0)
+    for radii, y in ((row_a, y_a), (row_b, y_b)):
+        x = spec.gap_mm
+        for radius in radii:
+            x += radius
+            solid = solid.union(
+                cq.Workplane("XY")
+                .moveTo(x, y)
+                .circle(radius)
+                .extrude(spec.base_thickness_mm + spec.post_height_mm)
+            )
+            x += radius + spec.gap_mm
+    return solid
+
+
+def build_strain_strips(spec: StrainCouponSpec | None = None) -> cq.Workplane:
+    """Build the test strips as upright thin walls, each with a handling tab."""
+    spec = spec or StrainCouponSpec()
+    shapes: list[cq.Shape] = []
+    index = 0
+    for thickness in spec.strip_thicknesses_mm:
+        for _repeat in range(spec.repeats):
+            y = index * spec.strip_pitch_mm
+            strip = (
+                cq.Workplane("XY")
+                .moveTo(spec.strip_length_mm / 2.0, y)
+                .rect(spec.strip_length_mm, thickness)
+                .extrude(spec.strip_height_mm)
+            )
+            tab = (
+                cq.Workplane("XY")
+                .moveTo(-spec.tab_length_mm / 2.0, y)
+                .rect(spec.tab_length_mm, spec.tab_width_mm)
+                .extrude(spec.strip_height_mm)
+            )
+            shapes.append(cast("cq.Shape", strip.union(tab).val()))
+            index += 1
+    return cq.Workplane("XY").newObject([cq.Compound.makeCompound(shapes)])
+
+
+def strain_data_template(spec: StrainCouponSpec | None = None) -> str:
+    """Return the CSV data-entry template for the strain test.
+
+    One row per strip thickness and mandrel radius, pre-filled with the nominal
+    strain so the only thing to write down at the bench is what was observed.
+    """
+    spec = spec or StrainCouponSpec()
+    header = [
+        "specimen_id",
+        "strip_thickness_nominal_mm",
+        "strip_thickness_measured_mm",
+        "mandrel_radius_mm",
+        "nominal_strain",
+        "whitening_on_bend",
+        "crack_on_bend",
+        "permanent_set_deg_after_release",
+        "whitening_after_10_cycles",
+        "crack_after_10_cycles",
+        "permanent_set_deg_after_10_cycles",
+        "verdict",
+        "notes",
+    ]
+    lines = [",".join(header)]
+    for row in spec.strain_table():
+        lines.append(
+            ",".join(
+                [
+                    "",
+                    f"{row['thickness_mm']:.2f}",
+                    "",
+                    f"{row['radius_mm']:.1f}",
+                    f"{row['nominal_strain']:.5f}",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+        )
+    lines.append("")
+    lines.append("# verdict: pass | marginal | fail")
+    lines.append(
+        "# allowable_strain = the largest nominal_strain whose verdict is 'pass' "
+        "after 10 cycles, across every repeat"
+    )
+    lines.append(
+        "# measure strip thickness with calipers before testing: nominal and "
+        "as-printed will differ, and the strain depends on the measured value"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def coupon_metadata(
+    flexure: FlexureCouponSpec,
+    cantilever: CantileverCouponSpec,
+    strain: StrainCouponSpec | None = None,
+) -> dict[str, Any]:
     """Return a JSON-serialisable description of both coupons."""
     return {
         "flexure_coupon": {
@@ -199,7 +400,25 @@ def coupon_metadata(flexure: FlexureCouponSpec, cantilever: CantileverCouponSpec
             "strip_count": cantilever.strip_count,
             "size_mm": [cantilever.total_width_mm, cantilever.length_mm],
         },
+        "strain_mandrels": {
+            "mandrel_radii_mm": list((strain or StrainCouponSpec()).mandrel_radii_mm),
+            "post_height_mm": (strain or StrainCouponSpec()).post_height_mm,
+            "strain_range": _strain_range(strain or StrainCouponSpec()),
+        },
+        "strain_strips": {
+            "thicknesses_mm": list((strain or StrainCouponSpec()).strip_thicknesses_mm),
+            "repeats": (strain or StrainCouponSpec()).repeats,
+            "strip_count": (strain or StrainCouponSpec()).strip_count(),
+            "length_mm": (strain or StrainCouponSpec()).strip_length_mm,
+            "height_mm": (strain or StrainCouponSpec()).strip_height_mm,
+        },
     }
+
+
+def _strain_range(spec: StrainCouponSpec) -> list[float]:
+    """Smallest and largest nominal strain the mandrel set produces."""
+    values = [row["nominal_strain"] for row in spec.strain_table()]
+    return [min(values), max(values)]
 
 
 @dataclass
@@ -208,14 +427,17 @@ class CouponSet:
 
     flexure_spec: FlexureCouponSpec = field(default_factory=FlexureCouponSpec)
     cantilever_spec: CantileverCouponSpec = field(default_factory=CantileverCouponSpec)
+    strain_spec: StrainCouponSpec = field(default_factory=StrainCouponSpec)
 
     def build(self) -> dict[str, cq.Workplane]:
-        """Build both coupons, keyed by output file stem."""
+        """Build every coupon, keyed by output file stem."""
         return {
             "flexure_coupon": build_flexure_coupon(self.flexure_spec),
             "cantilever_coupon": build_cantilever_coupon(self.cantilever_spec),
+            "strain_mandrels": build_strain_mandrels(self.strain_spec),
+            "strain_strips": build_strain_strips(self.strain_spec),
         }
 
     def metadata(self) -> dict[str, Any]:
         """Return the combined metadata."""
-        return coupon_metadata(self.flexure_spec, self.cantilever_spec)
+        return coupon_metadata(self.flexure_spec, self.cantilever_spec, self.strain_spec)

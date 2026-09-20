@@ -4,8 +4,9 @@ Two constraints act on a small-length flexural pivot at once, and they pull in
 opposite directions:
 
 * **Strain** wants the flexure *long*: ``L >= t * theta * SF / (2 eps_allow)``.
-* **PRBM validity** wants it *short*: ``L <= r * l``, where ``l`` is the shorter
-  adjacent link and ``r`` the small-length ratio limit.
+* **Geometry** wants it *short*: ``L <= f * l``, where ``l`` is the shorter
+  adjacent link and ``f`` the fraction of it a flexure may occupy before there
+  is no rigid material left to attach to.
 
 Eliminating ``L`` between them gives the bound that actually governs design:
 
@@ -23,8 +24,11 @@ It also says exactly which levers exist, and their order of usefulness:
 1. longer adjacent links (linear)
 2. thinner flexures (inverse)
 3. a higher measured allowable strain (linear)
-4. accepting a larger ``r``, which trades PRBM accuracy for range -- a legitimate
-   research choice for this project, but one that must be recorded per sample
+Note what is **not** in this bound: pseudo-rigid-body model validity. The
+small-length ratio limit used to stand in place of ``f``, which made it a
+feasibility constraint and put the bound roughly eight times tighter. It is now
+metadata selecting which PRBM model applies, so the governing limit is the
+physical one: how much flexure actually fits on the link.
 """
 
 from __future__ import annotations
@@ -32,6 +36,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+
+#: Fallback geometric fraction, used when a caller does not read one from config.
+#: Mirrors ``geometry.max_length_fraction_of_link`` in configs/models/prbm.yaml.
+DEFAULT_MAX_LENGTH_FRACTION = 0.8
 
 
 @dataclass(frozen=True)
@@ -42,7 +50,7 @@ class DesignLimit:
     shortest_link_mm: float
     thickness_mm: float
     allowable_strain: float
-    length_ratio_limit: float
+    max_length_fraction: float
     strain_safety_factor: float
 
     @property
@@ -60,7 +68,7 @@ def max_bend_deg(
     thickness_mm: float,
     allowable_strain: float,
     *,
-    length_ratio_limit: float = 0.1,
+    max_length_fraction: float = DEFAULT_MAX_LENGTH_FRACTION,
     strain_safety_factor: float = 1.5,
 ) -> DesignLimit:
     """Largest one-sided bend a joint can take within both constraints."""
@@ -68,13 +76,13 @@ def max_bend_deg(
         ("shortest_link_mm", shortest_link_mm),
         ("thickness_mm", thickness_mm),
         ("allowable_strain", allowable_strain),
-        ("length_ratio_limit", length_ratio_limit),
+        ("max_length_fraction", max_length_fraction),
         ("strain_safety_factor", strain_safety_factor),
     ):
         if value <= 0.0:
             raise ValueError(f"{name} must be positive, got {value}")
 
-    theta = (2.0 * length_ratio_limit * shortest_link_mm * allowable_strain) / (
+    theta = (2.0 * max_length_fraction * shortest_link_mm * allowable_strain) / (
         thickness_mm * strain_safety_factor
     )
     return DesignLimit(
@@ -82,7 +90,7 @@ def max_bend_deg(
         shortest_link_mm=float(shortest_link_mm),
         thickness_mm=float(thickness_mm),
         allowable_strain=float(allowable_strain),
-        length_ratio_limit=float(length_ratio_limit),
+        max_length_fraction=float(max_length_fraction),
         strain_safety_factor=float(strain_safety_factor),
     )
 
@@ -92,7 +100,7 @@ def required_link_length_mm(
     thickness_mm: float,
     allowable_strain: float,
     *,
-    length_ratio_limit: float = 0.1,
+    max_length_fraction: float = DEFAULT_MAX_LENGTH_FRACTION,
     strain_safety_factor: float = 1.5,
 ) -> float:
     """Shortest adjacent link that can support a required one-sided bend.
@@ -105,7 +113,7 @@ def required_link_length_mm(
         raise ValueError("bend_deg must be positive")
     theta = float(np.radians(bend_deg))
     return (theta * thickness_mm * strain_safety_factor) / (
-        2.0 * length_ratio_limit * allowable_strain
+        2.0 * max_length_fraction * allowable_strain
     )
 
 
@@ -115,7 +123,7 @@ def min_link_length_for_excursion_mm(
     allowable_strain: float,
     *,
     unstressed_at: str = "mid_arc",
-    length_ratio_limit: float = 0.1,
+    max_length_fraction: float = DEFAULT_MAX_LENGTH_FRACTION,
     strain_safety_factor: float = 1.5,
 ) -> float:
     """Shortest adjacent link supporting a peak-to-peak excursion.
@@ -129,6 +137,6 @@ def min_link_length_for_excursion_mm(
         bend,
         thickness_mm,
         allowable_strain,
-        length_ratio_limit=length_ratio_limit,
+        max_length_fraction=max_length_fraction,
         strain_safety_factor=strain_safety_factor,
     )

@@ -40,7 +40,8 @@ from cmtool.core.graph import Linkage
 from cmtool.core.provenance import Provenance, git_commit
 from cmtool.core.units import wrap_to_pi
 from cmtool.flexures.base import FLEXURES, FlexureGeometry
-from cmtool.flexures.slfp import DEFAULT_LENGTH_RATIO_LIMIT, prbm_validity
+from cmtool.flexures.prbm_models import max_length_fraction_of_link, select_model
+from cmtool.flexures.slfp import prbm_validity
 from cmtool.materials.loader import Material, Printer
 
 #: Margin applied on top of the strain-limited minimum flexure length.
@@ -72,7 +73,7 @@ class NaiveStrategy:
         thickness_mm: float | None = None,
         flexure_length_mm: float | dict[str, float] | None = None,
         strain_safety_factor: float = DEFAULT_STRAIN_SAFETY_FACTOR,
-        length_ratio_limit: float = DEFAULT_LENGTH_RATIO_LIMIT,
+        max_length_fraction: float | None = None,
         min_flexure_length_mm: float = DEFAULT_MIN_FLEXURE_LENGTH_MM,
         **_: Any,
     ) -> CompliantMechanism:
@@ -97,8 +98,17 @@ class NaiveStrategy:
         flexure_length_mm
             Fixed length for every joint, or a per-joint mapping. When omitted,
             each flexure is sized to the shortest length that survives its bend.
-        strain_safety_factor, length_ratio_limit, min_flexure_length_mm
+        strain_safety_factor, min_flexure_length_mm
             Design choices; see the module constants.
+        max_length_fraction
+            Hard geometric cap on flexure length as a fraction of the shorter
+            adjacent link. Defaults to the value in ``configs/models/prbm.yaml``.
+
+        Notes
+        -----
+        Feasibility is decided by **strain and geometry only**. The PRBM length
+        ratio is recorded on every joint and selects which model represents it,
+        but it never rejects a design.
         """
         if placement not in {"pivot_matched", "unmatched"}:
             raise ValueError(f"unknown placement {placement!r}")
@@ -126,8 +136,13 @@ class NaiveStrategy:
                 "placement": placement,
                 "unstressed_at": unstressed_at,
                 "strain_safety_factor": strain_safety_factor,
-                "length_ratio_limit": length_ratio_limit,
             },
+        )
+
+        length_fraction = (
+            float(max_length_fraction)
+            if max_length_fraction is not None
+            else max_length_fraction_of_link(provenance)
         )
 
         # Odd sample count so "the middle of the arc" is an actual sample.
@@ -155,11 +170,17 @@ class NaiveStrategy:
                 flexure.min_length_mm(thickness, max_bend, allowable_strain) * strain_safety_factor,
                 min_flexure_length_mm,
             )
-            max_length_prbm = length_ratio_limit * adjacent
+            max_length_geometric = length_fraction * adjacent
 
             length = _chosen_length(flexure_length_mm, joint_name, min_length_strain)
             geometry = FlexureGeometry(thickness_mm=thickness, length_mm=length, width_mm=width)
             host = _host_body(linkage, joint_name)
+
+            # The length ratio selects the model; it does not gate the design.
+            model = select_model(length / adjacent, provenance=provenance)
+            pivot_fraction = flexure.characteristic_pivot_fraction(
+                model=model, provenance=provenance
+            )
 
             sizing[joint_name] = JointSizing(
                 joint=joint_name,
@@ -169,21 +190,23 @@ class NaiveStrategy:
                 excursion_deg=excursion,
                 shortest_adjacent_link_mm=adjacent,
                 min_length_strain_mm=min_length_strain,
-                max_length_prbm_mm=max_length_prbm,
+                max_length_geometric_mm=max_length_geometric,
                 strain=flexure.peak_strain(geometry, max_bend),
                 validity=prbm_validity(
-                    geometry, adjacent, max_bend, length_ratio_limit=length_ratio_limit
+                    geometry, adjacent, max_bend, model=model, provenance=provenance
                 ),
-                stiffness_nmm_per_rad=flexure.stiffness_nmm_per_rad(geometry, modulus),
+                stiffness_nmm_per_rad=flexure.stiffness_nmm_per_rad(
+                    geometry, modulus, model=model, provenance=provenance
+                ),
                 host_body=host,
-                pivot_offset_mm=0.0 if placement == "pivot_matched" else length / 2.0,
+                pivot_offset_mm=(0.0 if placement == "pivot_matched" else pivot_fraction * length),
             )
 
         report = FeasibilityReport(
             joints=sizing,
             allowable_strain=allowable_strain,
             strain_safety_factor=strain_safety_factor,
-            length_ratio_limit=length_ratio_limit,
+            max_length_fraction=length_fraction,
         )
 
         return CompliantMechanism(

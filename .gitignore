@@ -14,6 +14,7 @@ out/
 # ...except the committed example parts. These are small, and having them in the
 # repo means the team can print the coupons without running Python first.
 !examples/coupons/*.stl
+!examples/mechanisms/*.stl
 build/
 dist/
 *.egg-info/

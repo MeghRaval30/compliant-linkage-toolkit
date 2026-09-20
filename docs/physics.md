@@ -4,9 +4,10 @@ This file records the modelling decisions the code depends on, and — more impo
 where each model stops being valid. Every number the toolkit produces should be traceable
 to something written down here.
 
-> **Status.** Milestone A1 (rigid kinematics) is implemented. The PRBM (A3), beam FEA (A4)
-> and strain models are specified here but not yet written. Sections marked *(planned)*
-> describe what will be implemented, not what exists.
+> **Status.** Rigid kinematics (A1), flexure sizing and feasibility (A2) and the PRBM
+> quasi-static solver (A3) are implemented. Beam FEA (A4) and camera tracking (A5) are
+> specified here but not yet written; sections marked *(planned)* describe what will be
+> built, not what exists.
 
 ---
 
@@ -64,7 +65,7 @@ detected and reported (`diagnostics["branch_flip"]`), and Phase B's generator re
 `dyad_clearance()` gives the distance from a toggle in mm; it reaches zero exactly where the
 circles become tangent and the branches merge.
 
-## 4. Flexure strain *(planned, A3)*
+## 4. Flexure strain
 
 ### The leaf-flexure model
 
@@ -100,29 +101,62 @@ the single most important number for feasibility filtering, since it sets the ma
 excursion. It will come from the cantilever strip tests plus a deliberate flexure-to-failure
 test (A3, week 3).
 
-## 5. PRBM stiffness and its validity envelope *(planned, A3)*
+## 5. Two PRBM models, and why validity is metadata
 
-For a small-length flexural pivot the characteristic pivot sits at the **centre of the
-flexure** and the torsional spring constant is
+### The models
 
-```
-K = E I / L,    I = w t³ / 12
-```
+A prismatic flexure is one piece of geometry with **two** pseudo-rigid-body models,
+selected by the length ratio `L_flexure / L_link`:
 
-with `w` the out-of-plane width (the printed part thickness).
+| | pivot | stiffness | when |
+|---|---|---|---|
+| `small_length` | centre of the flexure | `K = E I / L` | ratio ≤ 0.1 |
+| `long_segment` (Howell) | `(1 − γ) L` from the root | `K = γ K_Θ E I / L` | ratio > 0.1 |
 
-This is only valid inside an envelope, and the dataset records the ratios rather than
-assuming them:
+with `I = w t³ / 12`, `γ ≈ 0.85` and `K_Θ ≈ 2.65`. The constants live in
+`configs/models/prbm.yaml` with citations and `status: literature` — published results,
+neither ours nor guesses, and flagged **unverified until A4's beam FEA checks them**.
 
-| Condition | Rule of thumb | Recorded as |
+### Validity does not filter
+
+**The length ratio selects the model and is recorded on every sample. It never rejects a
+design.** Phase C's fidelity map is a map of where the simple model fails, so filtering
+those designs out would hide the result it exists to show. Where the simple model does not
+apply, beam FEA is the reference.
+
+This was not always so, and changing it moved a headline result. While the 0.1 ratio was
+being used as a feasibility constraint, the A1 pilot four-bar was reported unbuildable. It
+is not: it builds fine, three of its four joints just need the long-segment model. The old
+rule was also about **8× tighter** than the real one (§5.3), which was quietly shrinking the
+whole design space.
+
+### The two hard limits
+
+| Limit | Meaning | Consequence of breaking it |
 |---|---|---|
-| Flexure short relative to its links | `L_flexure / L_link ≲ 0.1` | `prbm_validity.length_ratio` |
-| Rigid segments genuinely rigid | `E I` of link ≫ `E I` of flexure | `prbm_validity.stiffness_ratio` |
-| Moderate deflection | bend angle within the PRBM's fitted range | `prbm_validity.bend_angle_deg` |
+| **Strain** | `L ≥ t·θ·SF / (2·ε_allow)` | the flexure cracks |
+| **Geometry** | `L ≤ f · l`, `f = 0.8` | no rigid material left to attach to |
 
-Phase B deliberately samples toward the edges of this envelope, so these ratios are stored
-for every sample. The Phase C "fidelity map" — where PRBM suffices and where FEA is needed —
-then falls out of data already collected rather than requiring a new study.
+Feasibility is these two, and nothing else. A joint's **utilisation** is their ratio; above
+1.0 it cannot be built.
+
+### The discontinuity at the switch
+
+The two models do not agree where they meet: `γ K_Θ = 0.85 × 2.65 ≈ 2.25`, so `K` jumps by
+a factor of 2.25 across the threshold. Physical stiffness does not jump, which means
+neither model is trustworthy right there.
+
+These samples are **flagged** (`near_model_boundary`) rather than blended. Blending would
+be inventing a model, and inventing a model is the same sin as inventing a measurement.
+Resolving that region is one of the things A4 is for.
+
+### What is recorded per sample
+
+`length_ratio`, `small_length_limit`, the `model` chosen, `is_small_length`,
+`near_model_boundary`, `within_model_angle`, `model_verified`, and `slenderness`.
+
+Phase A *prefers* small-length designs for pilot prints — the search ranks them higher —
+but keeps the rest.
 
 ## 6. Pivot-matched placement
 

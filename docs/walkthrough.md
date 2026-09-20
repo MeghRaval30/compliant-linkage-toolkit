@@ -23,8 +23,8 @@ correction can close the difference.
 |---|---|---|
 | Rigid kinematics | **working** | The ideal path, pure geometry |
 | Conversion + feasibility | **working** | Flexure sizes, and whether the design is buildable |
-| Test coupons + CAD export | **working** | Printable parts and print sheets |
-| PRBM | A3, next | Path including flexure stiffness, fast |
+| Test coupons + mechanism CAD | **working** | Printable parts and print sheets |
+| PRBM | **working** | Input torque and strain, fast |
 | 2D beam FEA | A4 | Path without the small-deflection assumption |
 | Camera tracking | A5 | The measured path |
 | 3D solid FEA | Phase C | Checks whether the 2D assumption held |
@@ -85,28 +85,35 @@ bending it too far breaks it. So not every rigid linkage has a compliant equival
 
 So surviving a given bend needs `L ≥ t·θ / (2·ε_allow)`.
 
-*Validity wants a short flexure.* The whole pseudo-rigid-body model assumes the flexure is
-short compared to the links it joins — "small-length" is the name of the flexure type. The
-usual rule is `L ≤ 0.1 × l`, where `l` is the shorter adjacent link.
+*Geometry wants a short flexure.* A flexure is a necked-down section of a link, so rigid
+material has to remain at each end: `L ≤ f · l`, with `f = 0.8` and `l` the shorter adjacent
+link.
 
 **Eliminate `L` and you get the rule that governs everything:**
 
 ```
-θ_max = 2 · r · l · ε_allow / (t · SF)
+θ_max = 2 · f · l · ε_allow / (t · SF)
 ```
 
-`r` is the length-ratio limit (0.1), `l` the shorter adjacent link, `SF` a safety factor.
+`f` is the geometric fraction (0.8), `l` the shorter adjacent link, `SF` a safety factor.
+
+Note what is *not* in that bound: pseudo-rigid-body validity. The small-length ratio (0.1)
+used to stand where `f` is now, which made model validity a feasibility constraint and put
+the bound 8× tighter than physics requires. Validity is metadata now — it picks which PRBM
+model represents the flexure, and nothing more.
 
 **Why this matters, and it is counter-intuitive:** the largest usable joint rotation is set
 by **the length of the neighbouring link**, not by anything about the flexure by itself.
 Short links cannot carry large rotations at any thickness. A classic crank-rocker with a
 stubby crank is exactly the wrong shape for a compliant mechanism.
 
-We found this the concrete way. The pilot four-bar from milestone A1 has an 18 mm input
-link, and it is simply not buildable: it needs a 7.25 mm flexure to survive a 9.2° bend,
-but small-length validity caps it at 1.8 mm. The fix was not a cleverer flexure — it was
-redesigning around links of comparable length. Designs with ~100 mm links reach the 20–25°
-per joint the project wants, with margin.
+Worth knowing how this played out, because it is a good lesson in what a filter costs.
+While small-length validity was being enforced as a constraint, the A1 pilot four-bar (18 mm
+input link) was reported unbuildable — it needs a 7.25 mm flexure for a 9.2° bend against a
+1.8 mm cap. Under the correct rule the cap is 14.4 mm and the design is fine; three of its
+four joints simply use the long-segment model. A modelling convenience had been quietly
+rejecting real designs, including exactly the ones whose model error the project exists to
+measure.
 
 **Two decisions that buy a factor of two each, for free:**
 
@@ -125,10 +132,11 @@ keeping the two separable is what stops a conversion bug being mistaken for a
 simulation-to-reality gap.
 
 **What the feasibility report tells you.** For each joint: the bend it must take, the
-flexure length strain requires, the length validity allows, and their ratio — the
-**utilisation**. Above 1.0 the joint cannot be built as specified. The joint with the
-highest utilisation is the one **limiting the design**, which is the actionable number:
-it says which joint to fix.
+flexure length strain requires, the length that actually fits, and their ratio — the
+**utilisation**. Above 1.0 the joint cannot be built. The joint with the highest
+utilisation is the one **limiting the design**, which is the actionable number: it says
+which joint to fix. Alongside it, and kept firmly separate, sits the PRBM model each joint
+uses and any caveats about it — model notes are not failures.
 
 ---
 
@@ -151,6 +159,19 @@ infill. If their apparent moduli differ, then a modulus measured on a thick stri
 transfer to a 0.5 mm flexure unchanged — which is something to find out before trusting any
 simulation.
 
+The **strain coupon** measures `ε_allow`: strips wrapped around vertical posts of
+decreasing radius, where the strain is `(t/2)/(R + t/2)` — the exact form, not the familiar
+`t/(2R)`, which overstates it by 6% at the tightest radius and this is the one number where
+that matters. The posts span roughly 0.008 to 0.057 strain. Check whitening, cracking and
+permanent set on a single bend and again after ten cycles; the largest strain that still
+passes sets the limit.
+
+One geometric detail that decides whether the test means anything: a flexure bends
+**in-plane**, so the strips are printed as upright thin walls and wrapped around *vertical*
+posts. Printed flat and bent over a horizontal bar, a strip is loaded across its layer
+boundaries instead, and what you measure is interlayer adhesion — a different and usually
+much lower failure strain.
+
 **The slicer setting that matters most** is the wall generator: **Arachne**. It varies
 extrusion width to fill thin features exactly. The classic generator works in whole-nozzle
 perimeters and will thin, distort or silently drop a sub-2-perimeter wall — which is every
@@ -158,28 +179,44 @@ flexure in this project.
 
 ---
 
-## 4. PRBM — the fast approximation *(next, A3)*
+## 4. PRBM — the fast approximation
 
-**What it solves.** The rigid model says where the mechanism goes; it does not say what
-force is needed or how the flexure's stiffness changes the path.
+**What it solves.** The rigid model says where the mechanism goes. It does not say what
+force is needed to drive it, or how much strain each flexure sees.
 
-**How.** Replace each flexure with a pin joint at its centre plus a torsional spring:
+**How.** Replace each flexure with a pin at its characteristic pivot plus a torsional
+spring, then use energy. Writing `Δφⱼ(θ)` for the rotation at joint `j` measured from the
+configuration the part was *printed* in (which is unstressed):
 
 ```
-K = E·I / L,    I = w·t³/12
+U(θ) = Σⱼ ½ Kⱼ Δφⱼ(θ)²        T(θ) = dU/dθ
 ```
 
-Then solve for static equilibrium: the input torque balances the spring torques.
+One degree of freedom, so that derivative is the whole story.
 
-**Why.** It is fast — milliseconds, not seconds — which is what makes generating thousands
-of dataset samples possible at all. It is also the standard model in the field (Howell), so
-results are comparable with published work.
+**Which K.** Two models, picked by the length ratio: `K = EI/L` for a short flexure pinned
+at its centre, `K = γ K_Θ EI/L` for Howell's long segment pinned at `(1−γ)L` from the root.
 
-**Where it stops.** It assumes the flexure bends in a perfect circular arc, that the links
-are genuinely rigid, and that the flexure is short relative to them. Phase B deliberately
-samples designs near the edges of that envelope, and every sample records how close it sits
-to each limit — so Phase C's "when is PRBM good enough" map comes out of data we already
-collected rather than a new study.
+**The thing people get wrong.** With a *prescribed* input angle, one degree of freedom and
+no external load, **stiffness does not affect the path at all**. Double every `K` and you
+get the identical coupler curve and exactly twice the torque. So the PRBM path differs from
+the rigid path only because the pivots sit somewhere else — and with pivot-matched
+placement, they don't. What the PRBM buys in Phase A is the torque curve, the strain, and
+being the reference the FEA and measurements are compared against.
+
+The path *will* diverge once effects the PRBM cannot represent enter: a real flexure
+stretches and shears as well as bending, so the links are not quite the length it assumes.
+That is what the `prbm_vs_fea` metric measures, and why A4 exists.
+
+**Why bother.** Milliseconds, not seconds — which is what makes thousands of dataset
+samples possible. And it is the standard model in the field, so results are comparable with
+published work.
+
+**How we know it works.** A parallelogram. Every joint in one rotates by exactly the input
+sweep, so with equal springs `T(θ) = (ΣK)·Δθ` in closed form. The solver matches that to
+about 2 × 10⁻¹¹ N·mm against a 148 N·mm peak — which exercises the kinematics, the energy
+sum and the numerical differentiation all at once, against an answer derived rather than
+recorded.
 
 ---
 

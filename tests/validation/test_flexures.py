@@ -21,6 +21,7 @@ from cmtool.convert.limits import (
     required_link_length_mm,
 )
 from cmtool.flexures import FLEXURES, FlexureGeometry
+from cmtool.flexures.prbm_models import PRBM_MODELS
 from cmtool.flexures.slfp import SmallLengthFlexuralPivot, prbm_validity
 
 pytestmark = pytest.mark.validation
@@ -142,18 +143,52 @@ class TestSizingInverses:
 
 
 class TestPrbmValidity:
-    def test_length_ratio_and_limit(self):
-        geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)
-        validity = prbm_validity(geom, 100.0, 0.2)
-        assert validity.length_ratio == pytest.approx(0.08)
-        assert validity.length_ratio_ok
-        assert validity.utilisation == pytest.approx(0.8)
+    """Validity selects the model and is recorded; it never rejects a design."""
 
-    def test_outside_the_envelope(self):
+    def test_short_flexure_uses_the_small_length_model(self):
+        geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)
+        validity = prbm_validity(geom, 200.0, 0.2)
+        assert validity.length_ratio == pytest.approx(0.04)
+        assert validity.is_small_length
+        assert validity.model == "small_length"
+
+    def test_long_flexure_switches_to_the_howell_model(self):
         geom = FlexureGeometry(thickness_mm=0.6, length_mm=20.0, width_mm=6.0)
         validity = prbm_validity(geom, 100.0, 0.2)
-        assert not validity.length_ratio_ok
-        assert validity.utilisation == pytest.approx(2.0)
+        assert validity.length_ratio == pytest.approx(0.2)
+        assert not validity.is_small_length
+        assert validity.model == "long_segment"
+        assert any("beam FEA is the reference" in n for n in validity.notes())
+
+    def test_models_differ_in_stiffness_by_the_howell_factor(self):
+        """Gamma * K_Theta = 0.85 * 2.65, a 2.25x jump at the switch."""
+        geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)
+        short = PRBM_MODELS.get("small_length")
+        long_model = PRBM_MODELS.get("long_segment")
+        second_moment = SLFP.second_moment_mm4(geom)
+        ratio = long_model.stiffness_nmm_per_rad(
+            geom, 3500.0, second_moment
+        ) / short.stiffness_nmm_per_rad(geom, 3500.0, second_moment)
+        assert ratio == pytest.approx(0.85 * 2.65, rel=1e-9)
+
+    def test_boundary_region_is_flagged(self):
+        """Neither model is trustworthy where they disagree by 2.25x."""
+        geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.6, width_mm=6.0)
+        assert prbm_validity(geom, 80.0, 0.2).near_model_boundary
+        assert not prbm_validity(geom, 300.0, 0.2).near_model_boundary
+
+    def test_long_segment_pivot_is_one_minus_gamma(self):
+        long_model = PRBM_MODELS.get("long_segment")
+        assert long_model.characteristic_pivot_fraction() == pytest.approx(0.15, abs=1e-9)
+
+    def test_small_length_pivot_is_the_centre(self):
+        assert PRBM_MODELS.get("small_length").characteristic_pivot_fraction() == pytest.approx(0.5)
+
+    def test_constants_are_flagged_unverified_until_the_beam_fea_runs(self):
+        geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)
+        validity = prbm_validity(geom, 200.0, 0.2)
+        assert validity.model_verified is False
+        assert any("not yet been checked" in n for n in validity.notes())
 
     def test_non_positive_link_refused(self):
         geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)
@@ -163,18 +198,28 @@ class TestPrbmValidity:
 
 class TestDesignLimits:
     def test_bound_is_the_exact_elimination_of_flexure_length(self):
-        """theta_max = 2 r l eps / (t SF), with L at both bounds simultaneously."""
-        link, thickness, allowable, ratio, safety = 100.0, 0.6, 0.01, 0.1, 1.5
+        """theta_max = 2 f l eps / (t SF), with L at both hard bounds simultaneously."""
+        link, thickness, allowable, fraction, safety = 100.0, 0.6, 0.01, 0.8, 1.5
         limit = max_bend_deg(
-            link, thickness, allowable, length_ratio_limit=ratio, strain_safety_factor=safety
+            link,
+            thickness,
+            allowable,
+            max_length_fraction=fraction,
+            strain_safety_factor=safety,
         )
-        expected = np.degrees(2.0 * ratio * link * allowable / (thickness * safety))
+        expected = np.degrees(2.0 * fraction * link * allowable / (thickness * safety))
         assert limit.max_bend_deg == pytest.approx(expected, rel=1e-12)
 
-        # At that bend, the strain-required length equals the PRBM-allowed length.
+        # At that bend, the strain-required length equals the length that fits.
         bend = np.radians(limit.max_bend_deg)
         strain_length = SLFP.min_length_mm(thickness, bend, allowable) * safety
-        assert strain_length == pytest.approx(ratio * link, rel=1e-12)
+        assert strain_length == pytest.approx(fraction * link, rel=1e-12)
+
+    def test_bound_no_longer_involves_prbm_validity(self):
+        """Feasibility is geometric now, so the bound is 8x looser than the old rule."""
+        geometric = max_bend_deg(100.0, 0.6, 0.01, max_length_fraction=0.8).max_bend_deg
+        old_rule = max_bend_deg(100.0, 0.6, 0.01, max_length_fraction=0.1).max_bend_deg
+        assert geometric / old_rule == pytest.approx(8.0, rel=1e-9)
 
     def test_required_link_length_inverts_max_bend(self):
         limit = max_bend_deg(120.0, 0.5, 0.015)

@@ -99,14 +99,44 @@ class TestArcFitting:
 
 
 class TestConversion:
-    def test_pilot_is_infeasible_because_its_input_link_is_short(self, pilot):
-        """The A1 example cannot be built: an 18 mm link cannot host the flexure."""
+    def test_pilot_is_feasible_but_leaves_the_small_length_regime(self, pilot):
+        """The A1 pilot builds fine; it just needs the long-segment PRBM model.
+
+        It used to be reported infeasible, but only because PRBM validity was
+        acting as a filter. Validity is metadata now, so the design is kept and
+        the model switches instead -- which is exactly the kind of sample the
+        fidelity map needs.
+        """
         fit = fit_input_arc(pilot, max_joint_excursion_deg=22.0)
         mech = convert(pilot, input_range_deg=fit.input_range_deg, thickness_mm=0.6)
+        assert mech.feasibility.feasible
+        assert not mech.feasibility.all_small_length
+        assert "long_segment" in mech.feasibility.prbm_models.values()
+        assert any("beam FEA is the reference" in n for n in mech.feasibility.prbm_notes())
+
+    def test_prbm_validity_never_makes_a_design_infeasible(self, pilot):
+        """The rule, stated as a test: only strain and geometry can reject a joint."""
+        fit = fit_input_arc(pilot, max_joint_excursion_deg=22.0)
+        mech = convert(pilot, input_range_deg=fit.input_range_deg, thickness_mm=0.6)
+        for sized in mech.sizing.values():
+            assert sized.feasible == (sized.strain_ok and sized.fits_geometrically)
+
+    def test_infeasible_when_strain_needs_more_flexure_than_fits(self):
+        """The one way a joint fails now: no length satisfies strain and still fits."""
+        small = Linkage.four_bar(
+            ground_mm=40.0,
+            input_mm=36.0,
+            coupler_mm=44.0,
+            output_mm=38.0,
+            input_angle_deg=90.0,
+            input_range_deg=(60.0, 120.0),
+            name="small_wide",
+        )
+        mech = convert(small, thickness_mm=2.0)
         assert not mech.feasibility.feasible
         binding = mech.sizing[mech.feasibility.binding_joint]
-        assert not binding.prbm_ok
-        assert "PRBM validity caps it" in (binding.limit_reason or "")
+        assert not binding.fits_geometrically
+        assert "fits on the" in (binding.limit_reason or "")
 
     def test_buildable_design_is_feasible(self, buildable):
         mech = convert(buildable, thickness_mm=0.6)
@@ -253,12 +283,28 @@ class TestFeasibilityReport:
     def test_reasons_are_empty_when_feasible(self, buildable):
         assert convert(buildable, thickness_mm=0.6).feasibility.reasons() == []
 
-    def test_reasons_name_every_failing_joint(self, pilot):
-        fit = fit_input_arc(pilot, max_joint_excursion_deg=22.0)
-        report = convert(pilot, input_range_deg=fit.input_range_deg, thickness_mm=0.6).feasibility
+    def test_reasons_name_every_failing_joint(self):
+        small = Linkage.four_bar(
+            ground_mm=40.0,
+            input_mm=36.0,
+            coupler_mm=44.0,
+            output_mm=38.0,
+            input_angle_deg=90.0,
+            input_range_deg=(60.0, 120.0),
+            name="small_wide",
+        )
+        report = convert(small, thickness_mm=2.0).feasibility
         failing = [name for name, s in report.joints.items() if not s.feasible]
         assert failing
         assert len(report.reasons()) == len(failing)
+
+    def test_prbm_notes_are_reported_separately_from_failures(self, pilot):
+        """Model caveats must not read as feasibility problems."""
+        fit = fit_input_arc(pilot, max_joint_excursion_deg=22.0)
+        report = convert(pilot, input_range_deg=fit.input_range_deg, thickness_mm=0.6).feasibility
+        assert report.feasible
+        assert report.reasons() == []
+        assert report.prbm_notes()
 
     def test_to_dict_round_trips(self, buildable):
         import json
@@ -309,8 +355,21 @@ class TestDesignSearch:
     def test_link_floor_comes_from_the_closed_form_bound(self, searched):
         """Sampling below the bound only generates provably infeasible designs."""
         expected = sampling_link_floor_mm(22.0, thickness_mm=0.6)
-        assert searched.link_floor_mm == pytest.approx(expected)
+        assert searched.link_floor_mm >= expected - 1e-9
         assert searched.link_floor_mm > 0.0
+
+    def test_dropping_prbm_as_a_filter_relaxed_the_link_floor(self):
+        """The geometric cap is 8x the old small-length ratio, so the floor fell 8x."""
+        geometric = sampling_link_floor_mm(22.0, thickness_mm=0.6)
+        old_rule = sampling_link_floor_mm(22.0, thickness_mm=0.6, max_length_fraction=0.1)
+        assert old_rule / geometric == pytest.approx(8.0, rel=1e-9)
+
+    def test_search_keeps_designs_outside_the_small_length_regime(self, searched):
+        """They are kept on purpose: the fidelity map needs them."""
+        for candidate in searched.kept:
+            assert candidate.compliant.feasibility.feasible
+            for sized in candidate.compliant.sizing.values():
+                assert sized.validity.model in {"small_length", "long_segment"}
 
     def test_report_is_serialisable(self, searched):
         import json
@@ -318,10 +377,11 @@ class TestDesignSearch:
         payload = json.loads(json.dumps(searched.to_dict(), default=str))
         assert payload["n_kept"] == len(searched.kept)
 
-    def test_pilot_is_rejected_by_evaluate(self, pilot):
+    def test_pilot_now_passes_flexure_feasibility(self, pilot):
+        """Whatever else rejects it, it is no longer the flexures."""
         candidate = evaluate(pilot, thickness_mm=0.6)
-        assert not candidate.ok
-        assert candidate.rejected_code.startswith("flexure_infeasible_")
+        code = candidate.rejected_code or ""
+        assert not code.startswith("flexure_infeasible_")
 
     def test_candidate_summary_is_serialisable(self, buildable):
         import json

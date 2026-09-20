@@ -28,7 +28,7 @@ from cmtool.solvers.base import SOLVERS, SimulationResult
 
 
 def simulate(
-    linkage: Linkage,
+    mechanism: Linkage | CompliantMechanism,
     *,
     solver: str = "rigid",
     input_range_deg: tuple[float, float] | None = None,
@@ -40,11 +40,15 @@ def simulate(
 
     Parameters
     ----------
-    linkage
-        The mechanism to solve.
+    mechanism
+        A rigid :class:`~cmtool.core.graph.Linkage`, or a
+        :class:`~cmtool.convert.base.CompliantMechanism` from :func:`convert`.
+        Given the latter, the linkage solved is its *effective* linkage -- joints
+        at the characteristic pivots -- and the flexure data is handed to the
+        solver. That is what ``solver="prbm"`` needs.
     solver
-        Registered solver name. ``"rigid"`` is the only one available in Phase A
-        milestone A1; ``"prbm"``, ``"beam_fea"`` and ``"solid_fea"`` follow.
+        Registered solver name: ``"rigid"`` or ``"prbm"``. ``"beam_fea"`` (A4) and
+        ``"solid_fea"`` (Phase C) follow.
     input_range_deg
         ``(start, end)`` absolute orientation of the input link, in degrees.
         Falls back to the linkage's own ``input_range_deg``.
@@ -68,6 +72,15 @@ def simulate(
     rotate continuously, so every simulation states its arc explicitly.
     """
     engine = SOLVERS.get(solver)
+
+    if isinstance(mechanism, CompliantMechanism):
+        linkage = mechanism.effective_linkage()
+        solver_kwargs.setdefault("mechanism", mechanism)
+        default_arc: tuple[float, float] | None = mechanism.input_range_deg
+    else:
+        linkage = mechanism
+        default_arc = linkage.input_range_deg
+
     if not engine.can_solve(linkage):
         raise ValueError(
             f"solver {solver!r} cannot handle linkage {linkage.name!r} "
@@ -78,7 +91,7 @@ def simulate(
     if input_angles_deg is not None:
         angles = np.radians(np.asarray(input_angles_deg, dtype=float))
     else:
-        arc = input_range_deg or linkage.input_range_deg
+        arc = input_range_deg or default_arc
         if arc is None:
             raise ValueError(
                 f"no input arc given: pass input_range_deg, or set it on linkage {linkage.name!r}"

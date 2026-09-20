@@ -62,7 +62,7 @@ class TestSimulate:
     def test_unknown_solver_lists_alternatives(self, mech):
         from cmtool.core.registry import RegistryError
 
-        with pytest.raises(RegistryError, match="available: rigid"):
+        with pytest.raises(RegistryError, match="available: prbm, rigid"):
             simulate(mech, solver="magic")
 
     def test_rigid_result_is_physical_because_it_uses_no_material_data(self, mech):
@@ -143,7 +143,7 @@ class TestCli:
         result = runner.invoke(app, ["simulate", str(linkage_json), "--start-deg", "40"])
         assert result.exit_code == 2
 
-    @pytest.mark.parametrize("command", ["generate", "export", "track"])
+    @pytest.mark.parametrize("command", ["generate", "track"])
     def test_future_milestone_commands_fail_clearly(self, command):
         result = runner.invoke(app, [command])
         assert result.exit_code == 2

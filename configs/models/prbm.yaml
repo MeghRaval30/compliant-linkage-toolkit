@@ -1,0 +1,76 @@
+# Pseudo-rigid-body model constants.
+#
+# These are PUBLISHED MODEL PARAMETERS, not measurements and not guesses, so they
+# carry status: literature and a citation. They are legitimate to use and report,
+# unlike a placeholder -- but they are not ours, and they have not yet been
+# checked against our own solver.
+#
+# The independent check is milestone A4: the 2D nonlinear beam FEA reproduces the
+# large-deflection behaviour these constants approximate. Until that runs,
+# `verified_against_fea` stays false and results say so.
+
+name: "prbm"
+
+small_length:
+  # A short flexure behaves as a pin at its own centre. No fitted constants are
+  # involved -- this one is a direct consequence of the geometry.
+  description: "Small-length flexural pivot: pin at the flexure centre, K = E I / L."
+  characteristic_pivot_fraction:
+    value: 0.5
+    status: literature
+    source: "Direct consequence of uniform curvature over a short segment; Howell (2001), Compliant Mechanisms, ch. 5."
+  stiffness_coefficient:
+    value: 1.0
+    status: literature
+    source: "K = E I / L exactly; no fitted coefficient enters the small-length model."
+  length_ratio_limit:
+    value: 0.1
+    status: design_choice
+    source: |
+      Usual rule of thumb for when a flexure counts as 'small-length'. This is now a
+      MODEL SELECTION threshold and metadata, NOT a feasibility filter: designs beyond
+      it are kept deliberately, because Phase C's fidelity map needs cases where the
+      simple model fails.
+
+long_segment:
+  # Howell's PRBM for a flexible cantilever segment carrying an end force: the beam
+  # is replaced by a rigid link of length gamma*L pinned at (1 - gamma)*L from the
+  # fixed end, with a torsional spring at that pivot.
+  description: "Howell long-segment PRBM: pivot at (1 - gamma) L from the root, K = gamma * K_Theta * E I / L."
+  gamma:
+    value: 0.85
+    status: literature
+    source: "Howell (2001), Compliant Mechanisms, ch. 5: characteristic radius factor for a cantilever with an end force."
+    note: |
+      VERIFY: gamma and K_Theta both vary with the load ratio n (transverse vs axial
+      end force). 0.85 and 2.65 are the standard values quoted for pure transverse
+      end loading. Confirm the figures and the load-ratio dependence against the
+      reference tables, and check both against our own beam FEA in A4.
+  stiffness_coefficient:
+    value: 2.65
+    status: literature
+    source: "Howell (2001), Compliant Mechanisms, ch. 5: stiffness coefficient K_Theta for a cantilever with an end force."
+    note: "VERIFY together with gamma; see above."
+  max_angle_deg:
+    value: 64.3
+    status: literature
+    source: "Howell (2001): approximate upper bound on the PRBM angle for which the model stays accurate."
+    note: "VERIFY. Used only as a reported warning threshold, never as a filter."
+
+verification:
+  verified_against_fea: false
+  note: |
+    Set true only once milestone A4's beam FEA has reproduced these models'
+    predictions to a stated tolerance, and record that tolerance here.
+
+geometry:
+  # A flexure is a necked-down section of a link, so it cannot occupy the whole
+  # link: some rigid material has to remain at each end for the joint to be a
+  # joint. THIS is the hard geometric limit on flexure length.
+  max_length_fraction_of_link:
+    value: 0.8
+    status: design_choice
+    source: |
+      Leaves 20 percent of the shorter adjacent link as rigid material. Replaces the
+      0.1 small-length ratio as the hard cap on flexure length; the 0.1 ratio now only
+      selects the PRBM model and is recorded as metadata.
