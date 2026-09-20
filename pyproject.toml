@@ -47,8 +47,8 @@ dev = [
 cmtool = "cmtool.cli:app"
 
 [project.urls]
-# PLACEHOLDER: replace with the real repository URL once the GitHub repo exists
-Homepage = "https://github.com/TODO-USER/TODO-REPO"
+Homepage = "https://github.com/MeghRaval30/compliant-linkage-toolkit"
+Issues = "https://github.com/MeghRaval30/compliant-linkage-toolkit/issues"
 
 [build-system]
 requires = ["hatchling"]
