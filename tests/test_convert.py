@@ -111,7 +111,7 @@ class TestConversion:
         mech = convert(pilot, input_range_deg=fit.input_range_deg, thickness_mm=0.6)
         assert mech.feasibility.feasible
         assert not mech.feasibility.all_small_length
-        assert "long_segment" in mech.feasibility.prbm_models.values()
+        assert any(m.startswith("long_segment") for m in mech.feasibility.prbm_models.values())
         assert any("beam FEA is the reference" in n for n in mech.feasibility.prbm_notes())
 
     def test_prbm_validity_never_makes_a_design_infeasible(self, pilot):
@@ -202,7 +202,7 @@ class TestConversion:
 
     def test_default_thickness_comes_from_the_printer_and_is_a_placeholder(self, buildable):
         mech = convert(buildable)
-        assert "bambu_a1.design_rules.min_flexure_thickness_mm" in (
+        assert "kobra2_neo.design_rules.min_flexure_thickness_mm" in (
             mech.provenance.placeholders_used
         )
 
@@ -369,7 +369,11 @@ class TestDesignSearch:
         for candidate in searched.kept:
             assert candidate.compliant.feasibility.feasible
             for sized in candidate.compliant.sizing.values():
-                assert sized.validity.model in {"small_length", "long_segment"}
+                assert sized.validity.model in {
+                    "small_length",
+                    "long_segment_end_force",
+                    "long_segment_end_moment",
+                }
 
     def test_report_is_serialisable(self, searched):
         import json
@@ -428,15 +432,21 @@ class TestConfigLoading:
         assert "PLA.properties.youngs_modulus_MPa" in unresolved
         assert "PLA.properties.allowable_strain" in unresolved
 
-    def test_primary_printer_is_the_bambu_a1(self):
-        printer = Printer.load("bambu_a1")
-        assert printer.model == "Bambu Lab A1"
+    def test_primary_printer_is_the_kobra(self):
+        """Changed from the A1 on 2026-09-20; the A1 was unavailable."""
+        printer = Printer.load("kobra2_neo")
+        assert printer.model == "Anycubic Kobra 2 Neo"
         assert printer.role == "primary"
         assert printer.nozzle_mm() == pytest.approx(0.4)
         assert printer.layer_height_mm() == pytest.approx(0.2)
 
+    def test_exactly_one_printer_is_primary(self):
+        """One machine prints all of Phase A and B, or printer variation confounds the gap."""
+        roles = [Printer.load(name).role for name in ("kobra2_neo", "bambu_a1")]
+        assert roles.count("primary") == 1
+
     def test_secondary_printer_is_recorded_but_flagged(self):
-        printer = Printer.load("kobra2_neo")
+        printer = Printer.load("bambu_a1")
         assert printer.role == "secondary"
         assert "min_flexure_thickness_mm" in " ".join(printer.unresolved())
 
@@ -445,11 +455,23 @@ class TestConfigLoading:
         assert Printer.load("bambu_a1").design_envelope_mm() == (180.0, 180.0)
         assert Printer.load("kobra2_neo").design_envelope_mm() == (180.0, 180.0)
 
-    def test_slicer_guidance_names_arachne(self):
+    @pytest.mark.parametrize("name", ["kobra2_neo", "bambu_a1"])
+    def test_slicer_guidance_names_arachne(self, name):
         """The setting that makes sub-2-perimeter flexures printable at all."""
-        settings = Printer.load("bambu_a1").slicer["settings"]
+        settings = Printer.load(name).slicer["settings"]
         assert settings["wall_generator"]["value"] == "Arachne"
         assert settings["sparse_infill_density_percent"]["value"] == 100
+
+    def test_each_printer_names_its_own_slicer(self):
+        assert Printer.load("kobra2_neo").slicer["target"] == "OrcaSlicer"
+        assert Printer.load("bambu_a1").slicer["target"] == "Bambu Studio"
+
+    def test_kobra_flow_ratio_is_an_unresolved_placeholder(self):
+        """Flow error goes into flexure thickness, which enters stiffness as t^3."""
+        from cmtool.core.quantities import Quantity
+
+        entry = Printer.load("kobra2_neo").slicer["settings"]["flow_ratio"]
+        assert Quantity.from_config("flow_ratio", entry).is_placeholder
 
     def test_unknown_config_name_lists_alternatives(self):
         from cmtool.core.config import ConfigError

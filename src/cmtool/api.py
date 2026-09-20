@@ -108,7 +108,7 @@ def convert(
     *,
     flexures: str | dict[str, str] = "small_length_pivot",
     material: str = "PLA",
-    printer: str = "bambu_a1",
+    printer: str = "kobra2_neo",
     strategy: str = "naive",
     **options: Any,
 ) -> CompliantMechanism:

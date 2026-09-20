@@ -59,6 +59,7 @@ class JointSizing:
     stiffness_nmm_per_rad: float
     host_body: str
     pivot_offset_mm: float
+    pivot_fraction: float = 0.5
 
     @property
     def max_bend_deg(self) -> float:
@@ -76,6 +77,17 @@ class JointSizing:
     def prbm_model(self) -> str:
         """Which pseudo-rigid-body model represents this flexure."""
         return self.validity.model
+
+    @property
+    def pivot_from_root_mm(self) -> float:
+        """Distance from the flexure's root end to its characteristic pivot.
+
+        0.5 L for the small-length model, ``(1 - gamma) L`` for a long segment.
+        The CAD places the flexure so that **this** point lands on the original
+        rigid joint, which is what pivot matching means for whichever model
+        applies.
+        """
+        return self.pivot_fraction * self.geometry.length_mm
 
     @property
     def strain_ok(self) -> bool:
@@ -130,6 +142,8 @@ class JointSizing:
             "utilisation": self.utilisation,
             "feasible": self.feasible,
             "limit_reason": self.limit_reason,
+            "pivot_fraction": self.pivot_fraction,
+            "pivot_from_root_mm": self.pivot_from_root_mm,
             "prbm": self.validity.to_dict(),
             "prbm_notes": self.validity.notes(),
         }

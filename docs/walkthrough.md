@@ -25,7 +25,7 @@ correction can close the difference.
 | Conversion + feasibility | **working** | Flexure sizes, and whether the design is buildable |
 | Test coupons + mechanism CAD | **working** | Printable parts and print sheets |
 | PRBM | **working** | Input torque and strain, fast |
-| 2D beam FEA | A4 | Path without the small-deflection assumption |
+| 2D beam FEA | **working** | Path, torque and strain without the PRBM's assumptions |
 | Camera tracking | A5 | The measured path |
 | 3D solid FEA | Phase C | Checks whether the 2D assumption held |
 
@@ -195,7 +195,10 @@ U(θ) = Σⱼ ½ Kⱼ Δφⱼ(θ)²        T(θ) = dU/dθ
 One degree of freedom, so that derivative is the whole story.
 
 **Which K.** Two models, picked by the length ratio: `K = EI/L` for a short flexure pinned
-at its centre, `K = γ K_Θ EI/L` for Howell's long segment pinned at `(1−γ)L` from the root.
+at its centre, and for a long segment Howell's model pinned at `(1−γ)L` from the root. That
+second one has two variants with different constants *and different formulas* — end force
+uses `γ K_Θ EI/L`, end moment uses `K_Θ EI/L`. Our beam FEA says flexure joints are
+moment-dominated, so the end-moment variant is the one in use.
 
 **The thing people get wrong.** With a *prescribed* input angle, one degree of freedom and
 no external load, **stiffness does not affect the path at all**. Double every `K` and you
@@ -220,28 +223,69 @@ recorded.
 
 ---
 
-## 5. 2D nonlinear beam FEA — the accurate one *(A4)*
+## 5. 2D nonlinear beam FEA — the accurate one
 
 **What it solves.** The same thing, without assuming circular bending or small deflections.
 
-**How.** Chop each flexure into beam elements. Each element carries its own rotating local
-frame, so a large rotation of the whole element is separated from the small strain within
-it — that is what "co-rotational" means, and it is what makes large deflections tractable.
-The resulting equations are nonlinear, so they are solved by Newton–Raphson: guess, compute
-the residual force, correct, repeat. The input rotation is applied in steps rather than all
-at once, because each step gives the next a good starting guess.
+**How.** Chop the whole mechanism into beam elements — flexures slender, links stout — and
+clamp the ground. Each element carries its own rotating local frame, so a large rotation of
+the element is separated from the small strain inside it. That is what "co-rotational"
+means, and it is what lets ordinary linear beam theory describe a flexure that has swung
+40°: large displacement, small strain.
 
-**Why bother when PRBM exists.** PRBM is a fitted approximation. Where flexures are long,
-bends are large, or links are not that rigid, it drifts. Having both lets us report
-`prbm_vs_fea` disagreement as a dataset field — and that disagreement is one of the
-stratification axes for choosing what to print.
+The resulting equations are nonlinear, so Newton–Raphson solves them: guess, compute the
+out-of-balance force, correct, repeat. The input rotation is applied in increments, each
+warm-started from the last converged state, because a good initial guess is what keeps
+Newton in its basin.
 
-**How we will know it is right.** Two published benchmarks: a cantilever under an end
-moment, which bends into an exact circular arc with a closed-form answer; and a cantilever
-under an end load, which has a known elliptic-integral solution. Both must match to under
-1%, and element count must show convergence.
+**Why bother when the PRBM exists.** Three things the PRBM cannot represent:
+
+- **distributed compliance** — the flexure bends along its length rather than hinging at a
+  point, and the shape of that bend changes with load;
+- **axial and shear compliance** — a real flexure stretches, so the effective link lengths
+  are not constant. This is the main reason the two predict different *paths* at all, since
+  with a prescribed input the PRBM path is pure geometry;
+- **pivot drift** — the effective pivot moves as the load ratio changes through the cycle.
+
+On the pilot mechanisms the two disagree by about 0.5 mm mean on the coupler path and about
+a third on peak torque. Both numbers go in the dataset as `prbm_vs_fea` metrics, and both
+are large enough to measure.
+
+**How we know it is right.** Two benchmarks, neither of them a stored number:
+
+- a cantilever under a **pure end moment**, which bends into an exact circular arc. The FEA
+  matches the whole deflected shape to under 10⁻⁴ L, converges at second order in element
+  size, and gets the tip *slope* exact to machine precision — the co-rotational element
+  represents constant-curvature rotation exactly.
+- a cantilever under a **transverse end load**, integrated from `EI θ'' + P cos θ = 0`.
+  This is the classical Bisshopp–Drucker solution; it is evaluated here by quadrature
+  rather than recalled as an elliptic-integral formula, so the reference does not depend on
+  anyone's memory. Tip position matches to under 10⁻⁴ L out to a 3.0 load parameter.
+
+Both are comfortably inside the 1% the project asked for.
 
 ---
+
+## 5b. Input torque — the measurement that tests the stiffness
+
+Worth separating from the path, because it is easy to assume the path does this job.
+
+With a prescribed input, one degree of freedom and no external load, the coupler path is
+fixed by geometry. Double every flexure's stiffness and the path does not move. So **the
+path cannot test the stiffness model at all** — it tests kinematics and pivot placement,
+which matter, but nothing about `K`.
+
+Input torque is directly proportional to stiffness. It is where the measured modulus, the
+PRBM's `K` and the FEA's distributed compliance all meet reality. So the printed lever
+carries a through-hole at a known radius: hook a kitchen or luggage scale through it, pull
+perpendicular, and `T = F·r`. For the pilot mechanisms the predicted peak force is about
+0.9 N (FEA) against 1.3 N (PRBM) at a 36 mm radius — roughly 90 g versus 135 g, which any
+kitchen scale resolves easily. The two models differ by more than the instrument's error,
+so this is a discriminating measurement rather than a formality.
+
+Record loading and unloading separately. PLA is viscoelastic so the branches will not
+coincide, and the gap between them is hysteresis — a material property, not a measurement
+error.
 
 ## 6. Measurement — the number the paper rests on *(A5)*
 

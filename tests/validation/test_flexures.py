@@ -157,19 +157,35 @@ class TestPrbmValidity:
         validity = prbm_validity(geom, 100.0, 0.2)
         assert validity.length_ratio == pytest.approx(0.2)
         assert not validity.is_small_length
-        assert validity.model == "long_segment"
+        assert validity.model.startswith("long_segment")
         assert any("beam FEA is the reference" in n for n in validity.notes())
 
-    def test_models_differ_in_stiffness_by_the_howell_factor(self):
-        """Gamma * K_Theta = 0.85 * 2.65, a 2.25x jump at the switch."""
+    def test_the_two_variants_use_different_stiffness_formulas(self):
+        """End force multiplies by gamma; end moment does not. Easy to get wrong."""
+        force = PRBM_MODELS.get("long_segment_end_force")
+        moment = PRBM_MODELS.get("long_segment_end_moment")
+        assert force.stiffness_formula() == "gamma_k_theta_ei_over_l"
+        assert moment.stiffness_formula() == "k_theta_ei_over_l"
+        assert force.stiffness_multiple() == pytest.approx(0.85 * 2.65, rel=1e-9)
+        assert moment.stiffness_multiple() == pytest.approx(1.5164, rel=1e-9)
+
+    def test_choosing_end_moment_shrinks_the_boundary_step(self):
+        """2.25x with the end-force variant, 1.52x with end-moment. Smaller, not gone."""
+        force = PRBM_MODELS.get("long_segment_end_force").stiffness_multiple()
+        moment = PRBM_MODELS.get("long_segment_end_moment").stiffness_multiple()
+        assert force == pytest.approx(2.2525, rel=1e-6)
+        assert moment == pytest.approx(1.5164, rel=1e-6)
+        assert 1.0 < moment < force
+
+    def test_stiffness_scales_with_the_variant_multiple(self):
         geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)
         short = PRBM_MODELS.get("small_length")
-        long_model = PRBM_MODELS.get("long_segment")
         second_moment = SLFP.second_moment_mm4(geom)
-        ratio = long_model.stiffness_nmm_per_rad(
-            geom, 3500.0, second_moment
-        ) / short.stiffness_nmm_per_rad(geom, 3500.0, second_moment)
-        assert ratio == pytest.approx(0.85 * 2.65, rel=1e-9)
+        base = short.stiffness_nmm_per_rad(geom, 3500.0, second_moment)
+        for name in ("long_segment_end_force", "long_segment_end_moment"):
+            model = PRBM_MODELS.get(name)
+            ratio = model.stiffness_nmm_per_rad(geom, 3500.0, second_moment) / base
+            assert ratio == pytest.approx(model.stiffness_multiple(), rel=1e-9)
 
     def test_boundary_region_is_flagged(self):
         """Neither model is trustworthy where they disagree by 2.25x."""
@@ -177,18 +193,24 @@ class TestPrbmValidity:
         assert prbm_validity(geom, 80.0, 0.2).near_model_boundary
         assert not prbm_validity(geom, 300.0, 0.2).near_model_boundary
 
-    def test_long_segment_pivot_is_one_minus_gamma(self):
-        long_model = PRBM_MODELS.get("long_segment")
-        assert long_model.characteristic_pivot_fraction() == pytest.approx(0.15, abs=1e-9)
+    @pytest.mark.parametrize(
+        ("variant", "gamma"),
+        [("long_segment_end_force", 0.85), ("long_segment_end_moment", 0.7346)],
+    )
+    def test_long_segment_pivot_is_one_minus_gamma(self, variant, gamma):
+        """Not gamma. The rigid link gamma*L runs from the pivot to the tip."""
+        model = PRBM_MODELS.get(variant)
+        assert model.characteristic_pivot_fraction() == pytest.approx(1.0 - gamma, abs=1e-9)
 
     def test_small_length_pivot_is_the_centre(self):
         assert PRBM_MODELS.get("small_length").characteristic_pivot_fraction() == pytest.approx(0.5)
 
-    def test_constants_are_flagged_unverified_until_the_beam_fea_runs(self):
+    def test_constants_are_now_verified_against_our_own_beam_fea(self):
+        """Flipped by milestone A4; the note disappears once it is true."""
         geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)
         validity = prbm_validity(geom, 200.0, 0.2)
-        assert validity.model_verified is False
-        assert any("not yet been checked" in n for n in validity.notes())
+        assert validity.model_verified is True
+        assert not any("not yet been checked" in n for n in validity.notes())
 
     def test_non_positive_link_refused(self):
         geom = FlexureGeometry(thickness_mm=0.6, length_mm=8.0, width_mm=6.0)

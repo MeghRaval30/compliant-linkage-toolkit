@@ -1,15 +1,19 @@
-# PRIMARY printer for Phase A and Phase B.
+# SECONDARY printer. NOT used for Phase A or Phase B parts.
 #
-# All Phase A and B parts are printed on this machine only, deliberately, so that
-# printer-to-printer variation is not confounded with the simulation-to-reality
-# gap being measured. The secondary printer (kobra2_neo.yaml) is reserved for a
-# possible Phase C printer-comparison study.
+# Was the primary until 2026-09-20, when it became unavailable and the Anycubic
+# Kobra 2 Neo took over. Nothing has been printed on this machine yet, so the
+# switch costs no data.
+#
+# Held for the Phase C printer-comparison study, which is a better use of it than
+# splitting the pilot across two machines: one machine for all of Phase A and B is
+# what keeps printer variation out of the simulation-to-reality gap.
 
 name: "bambu_a1"
 model: "Bambu Lab A1"
-role: "primary"
+role: "secondary"
 status: confirmed
 source: "Stated by the team."
+use: "Phase C printer-comparison study only."
 
 nozzle_diameter_mm:
   value: 0.4
@@ -44,10 +48,10 @@ design_rules:
     status: placeholder
     source: "1.5x nozzle diameter as a starting guess. NOT a measured print limit."
     note: |
-      PLACEHOLDER: set from the A2 flexure test coupon (strips at 0.4/0.5/0.6/0.8/1.0 mm).
-      The measured limit is the thinnest strip that prints with consistent, measurable
-      thickness and survives handling. Until then any feasibility verdict that depends
-      on this value is flagged non-physical.
+      PLACEHOLDER: this machine has not been characterised, and the Kobra's answer
+      will not transfer -- minimum printable thickness is exactly the kind of number
+      that differs between printers. Re-run the flexure coupon here before any Phase C
+      comparison.
   min_link_width_mm:
     value: 3.0
     status: design_choice

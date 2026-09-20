@@ -180,13 +180,19 @@ class TestModelSelection:
         assert select_model(0.05).name == "small_length"
 
     def test_ratio_above_the_limit_selects_long_segment(self):
-        assert select_model(0.25).name == "long_segment"
+        assert select_model(0.25).name.startswith("long_segment")
+
+    def test_the_active_variant_is_the_one_the_fea_chose(self):
+        from cmtool.flexures.prbm_models import active_long_segment_variant
+
+        assert active_long_segment_variant() == "end_moment"
+        assert select_model(0.25).name == "long_segment_end_moment"
 
     def test_selection_is_inclusive_at_the_limit(self):
         assert select_model(0.1).name == "small_length"
 
     def test_long_segment_max_angle_is_reported(self):
-        assert PRBM_MODELS.get("long_segment").max_angle_deg() == pytest.approx(64.3)
+        assert PRBM_MODELS.get("long_segment_end_moment").max_angle_deg() == pytest.approx(64.3)
 
     def test_small_length_has_no_separate_angle_limit(self):
         assert PRBM_MODELS.get("small_length").max_angle_deg() is None

@@ -3,7 +3,7 @@
     "name": "fb_02_0052",
     "flexure_type": "small_length_pivot",
     "material": "PLA",
-    "printer": "bambu_a1",
+    "printer": "kobra2_neo",
     "placement": "pivot_matched",
     "unstressed_at": "mid_arc",
     "input_range_deg": [
@@ -20,10 +20,10 @@
       "max_length_fraction": 0.8,
       "all_small_length": false,
       "prbm_models": {
-        "A": "long_segment",
-        "B": "long_segment",
-        "C": "long_segment",
-        "D": "long_segment"
+        "A": "long_segment_end_moment",
+        "B": "long_segment_end_moment",
+        "C": "long_segment_end_moment",
+        "D": "long_segment_end_moment"
       },
       "joints": {
         "A": {
@@ -38,27 +38,28 @@
           "strain_model": "leaf_uniform_bending",
           "min_length_strain_mm": 8.525673471469926,
           "max_length_geometric_mm": 53.839205030719285,
-          "stiffness_nmm_per_rad": 99.86835677547957,
+          "stiffness_nmm_per_rad": 67.2321315047002,
           "utilisation": 0.1583543714400202,
           "feasible": true,
           "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 2.262713739328118,
           "prbm": {
             "length_ratio": 0.12668349715201618,
             "small_length_limit": 0.1,
             "is_small_length": false,
             "small_length_utilisation": 1.2668349715201617,
-            "model": "long_segment",
+            "model": "long_segment_end_moment",
             "bend_angle_deg": 10.855224609375023,
             "slenderness": 14.20945578578321,
             "max_angle_deg": 64.3,
             "within_model_angle": true,
             "near_model_boundary": true,
-            "model_verified": false
+            "model_verified": true
           },
           "prbm_notes": [
-            "length ratio 0.127 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
-            "length ratio 0.127 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-            "the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)"
+            "length ratio 0.127 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+            "length ratio 0.127 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference"
           ]
         },
         "B": {
@@ -73,27 +74,28 @@
           "strain_model": "leaf_uniform_bending",
           "min_length_strain_mm": 8.740696005604892,
           "max_length_geometric_mm": 55.28609805051227,
-          "stiffness_nmm_per_rad": 97.4115790612119,
+          "stiffness_nmm_per_rad": 65.5782102057366,
           "utilisation": 0.1580993471020316,
           "feasible": true,
           "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 2.319780719887538,
           "prbm": {
             "length_ratio": 0.1264794776816253,
             "small_length_limit": 0.1,
             "is_small_length": false,
             "small_length_utilisation": 1.2647947768162529,
-            "model": "long_segment",
+            "model": "long_segment_end_moment",
             "bend_angle_deg": 11.12899980284483,
             "slenderness": 14.567826676008155,
             "max_angle_deg": 64.3,
             "within_model_angle": true,
             "near_model_boundary": true,
-            "model_verified": false
+            "model_verified": true
           },
           "prbm_notes": [
-            "length ratio 0.126 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
-            "length ratio 0.126 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-            "the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)"
+            "length ratio 0.126 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+            "length ratio 0.126 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference"
           ]
         },
         "C": {
@@ -108,27 +110,28 @@
           "strain_model": "leaf_uniform_bending",
           "min_length_strain_mm": 7.533092813708628,
           "max_length_geometric_mm": 57.93084173437119,
-          "stiffness_nmm_per_rad": 113.02728123176061,
+          "stiffness_nmm_per_rad": 76.090818761306,
           "utilisation": 0.13003596336904488,
           "feasible": true,
           "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 1.9992828327582697,
           "prbm": {
             "length_ratio": 0.1040287706952359,
             "small_length_limit": 0.1,
             "is_small_length": false,
             "small_length_utilisation": 1.040287706952359,
-            "model": "long_segment",
+            "model": "long_segment_end_moment",
             "bend_angle_deg": 9.5914316645741,
             "slenderness": 12.555154689514382,
             "max_angle_deg": 64.3,
             "within_model_angle": true,
             "near_model_boundary": true,
-            "model_verified": false
+            "model_verified": true
           },
           "prbm_notes": [
-            "length ratio 0.104 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
-            "length ratio 0.104 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-            "the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)"
+            "length ratio 0.104 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+            "length ratio 0.104 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference"
           ]
         },
         "D": {
@@ -143,44 +146,41 @@
           "strain_model": "leaf_uniform_bending",
           "min_length_strain_mm": 7.47586115336091,
           "max_length_geometric_mm": 53.839205030719285,
-          "stiffness_nmm_per_rad": 113.89256468697486,
+          "stiffness_nmm_per_rad": 76.67333411379741,
           "utilisation": 0.1388553406220499,
           "feasible": true,
           "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 1.9840935501019852,
           "prbm": {
             "length_ratio": 0.11108427249763994,
             "small_length_limit": 0.1,
             "is_small_length": false,
             "small_length_utilisation": 1.1108427249763992,
-            "model": "long_segment",
+            "model": "long_segment_end_moment",
             "bend_angle_deg": 9.518562051408534,
             "slenderness": 12.45976858893485,
             "max_angle_deg": 64.3,
             "within_model_angle": true,
             "near_model_boundary": true,
-            "model_verified": false
+            "model_verified": true
           },
           "prbm_notes": [
-            "length ratio 0.111 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
-            "length ratio 0.111 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-            "the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)"
+            "length ratio 0.111 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+            "length ratio 0.111 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference"
           ]
         }
       },
       "reasons": [],
       "prbm_notes": [
-        "A: length ratio 0.127 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
+        "A: length ratio 0.127 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
         "A: length ratio 0.127 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-        "A: the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)",
-        "B: length ratio 0.126 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
+        "B: length ratio 0.126 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
         "B: length ratio 0.126 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-        "B: the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)",
-        "C: length ratio 0.104 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
+        "C: length ratio 0.104 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
         "C: length ratio 0.104 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-        "C: the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)",
-        "D: length ratio 0.111 exceeds the small-length limit 0.1; using the 'long_segment' model, so the beam FEA is the reference here rather than the PRBM",
-        "D: length ratio 0.111 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference",
-        "D: the 'long_segment' model constants have not yet been checked against our own beam FEA (milestone A4)"
+        "D: length ratio 0.111 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+        "D: length ratio 0.111 sits near the model-switch threshold 0.1; the two PRBM models differ by about 2.25x in stiffness there, so treat either with caution and use the beam FEA as the reference"
       ]
     },
     "is_physical": false,
@@ -221,42 +221,42 @@
     "attachment_points": {
       "ground": {
         "A": [
-          -2.147521741383772,
-          -3.6823806709539855
+          -3.1551389424410377,
+          -5.410153681765595
         ],
         "D": [
-          65.43645180701128,
-          -3.24083566382883
+          64.56254124434412,
+          -4.761435757297317
         ]
       },
       "input": {
         "A": [
-          2.147521741383772,
-          3.6823806709539855
+          1.139904540326506,
+          1.9546076601423752
         ],
         "B": [
-          32.613190045686025,
-          55.92221877344047
+          33.64621994929803,
+          57.6935672428288
         ]
       },
       "coupler": {
         "B": [
-          37.016557068755105,
-          63.47272375804547
+          38.049586972367116,
+          65.2440722274338
         ],
         "C": [
-          102.94872172955631,
-          68.07542645749027
+          104.70277446212538,
+          68.29111037365857
         ]
       },
       "output": {
         "C": [
-          110.42550234579276,
-          68.99479523911131
+          112.17955507836184,
+          69.21047915527961
         ],
         "D": [
-          69.16156076978692,
-          3.24083566382883
+          68.28765020711975,
+          1.7202355703603427
         ]
       }
     },
@@ -293,6 +293,11 @@
       -22.669992859955997,
       -38.872502154216214
     ],
+    "force_point_mm": [
+      -18.1359942879648,
+      -31.098001723372967
+    ],
+    "force_radius_mm": 36.0,
     "coupler_pad_mm": [
       83.55337256467163,
       84.77529376221409
@@ -307,7 +312,7 @@
     "ok": true,
     "fits_envelope": true,
     "bounding_box_mm": [
-      146.09549520574876,
+      147.84954793831784,
       141.6477959164303,
       7.0
     ],
@@ -322,11 +327,11 @@
     "notes": []
   },
   "provenance": {
-    "config_hash": "e4b4b2253c862ede02a2b47eebeec77c6bc41ec77b320ff8d8d98a4c12106ea0",
-    "code_commit": "8163c375b3269ba671e0325e0b9c07a855c3055f-dirty",
+    "config_hash": "ecf9b14c9554fa9543f570cafc5e0ce60e1c6c6e1d2acf98941edfc24d111968",
+    "code_commit": "d8fe1ad38984e00859ae966866802993b16b191b-dirty",
     "version": "0.1.0.dev0",
     "seed": null,
-    "created_utc": "2026-09-20T11:52:38+00:00",
+    "created_utc": "2026-09-20T16:15:52+00:00",
     "placeholders_used": [
       "PLA.properties.allowable_strain",
       "PLA.properties.youngs_modulus_MPa"

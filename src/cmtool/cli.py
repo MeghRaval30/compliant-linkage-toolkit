@@ -18,7 +18,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -129,7 +129,7 @@ def simulate_cmd(
 def convert_cmd(
     linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
     material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
-    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
     flexure: Annotated[str, typer.Option(help="Registered flexure type")] = "small_length_pivot",
     thickness_mm: Annotated[
         float | None, typer.Option(help="Flexure thickness; default is the printer minimum")
@@ -235,7 +235,7 @@ def convert_cmd(
 @app.command()
 def coupons(
     out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/coupons"),
-    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
     material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
 ) -> None:
     """Export the flexure and cantilever test coupons, with print sheets.
@@ -380,7 +380,7 @@ def design(
         float, typer.Option(help="Ceiling for the worst joint excursion")
     ] = 22.0,
     thickness_mm: Annotated[float | None, typer.Option(help="Flexure thickness")] = None,
-    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
 ) -> None:
     """Search for four-bar designs that are feasible as compliant mechanisms."""
     from cmtool.convert.search import search
@@ -446,7 +446,7 @@ def export(
     linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
     out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/mechanisms"),
     material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
-    printer: Annotated[str, typer.Option(help="Printer config name")] = "bambu_a1",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
     thickness_mm: Annotated[
         float | None, typer.Option(help="Flexure thickness; default is the printer minimum")
     ] = None,
@@ -509,6 +509,7 @@ def export(
         "PRBM model per joint": mech.feasibility.prbm_models,
         "all small-length": mech.feasibility.all_small_length,
         "fiducial pad spacing (mm)": round(layout.fiducial_spacing_mm, 2),
+        "force hole radius from input pivot (mm)": round(layout.force_radius_mm, 2),
         "marker pad plane z (mm)": layout.pad_plane_z_mm,
         "bolt holes (mm)": [[round(x, 2), round(y, 2)] for x, y in layout.bolt_holes_mm],
     }
@@ -522,6 +523,9 @@ def export(
         "Stick the ArUco markers on the raised pads. All pads are coplanar, which the "
         "camera homography depends on.",
         "Move the lever gently by hand through the stated arc; do not force it past either end.",
+        "For the torque measurement, hook a spring scale through the hole in the lever and "
+        "pull perpendicular to the lever. Record force against angle, loading and unloading, "
+        "in the torque template written beside this sheet.",
     ]
     sheet = write_print_sheet(
         Path(out) / f"{stem}_print_sheet.md",
@@ -537,6 +541,15 @@ def export(
         instructions=instructions,
     )
 
+    from cmtool.metrics import write_template
+
+    template = write_template(
+        Path(out) / f"{stem}_torque_template.csv",
+        lever_radius_mm=layout.force_radius_mm,
+        input_range_deg=mech.input_range_deg,
+        printer=printer,
+    )
+
     report = {
         "conversion": mech.summary(),
         "layout": layout.to_dict(),
@@ -550,7 +563,8 @@ def export(
     status = "[green]OK[/]" if check.ok else "[red]DOES NOT FIT[/]"
     console.print(
         f"{stem}: {status}  {size[0]:.0f} x {size[1]:.0f} x {size[2]:.0f} mm  -> "
-        f"{paths['step'].name}, {paths['stl'].name}, {sheet.name}, {report_path.name}"
+        f"{paths['step'].name}, {paths['stl'].name}, {sheet.name}, {report_path.name}, "
+        f"{template.name}"
     )
     for note in check.notes:
         console.print(f"    [yellow]{note}[/]")
@@ -561,6 +575,166 @@ def export(
     caveat = mech.provenance.caveat()
     if caveat:
         console.print(f"[yellow]{caveat}[/]")
+
+
+@app.command(name="prbm-study")
+def prbm_study_cmd(
+    json_out: Annotated[Path | None, typer.Option("--json", help="Write the report")] = None,
+    ratios: Annotated[
+        str, typer.Option(help="Comma-separated tip load ratios P*L/M")
+    ] = "0,0.05,0.1,0.2,0.5,1,2,5",
+) -> None:
+    """Fit PRBM constants to the beam FEA and recommend a long-segment variant.
+
+    Howell gives different constants for different end loadings. Which one applies
+    to a flexure joint is an empirical question, and this answers it with our own
+    solver rather than by assumption.
+    """
+    from cmtool.solvers.prbm_study import recommend_variant, sweep
+
+    values = tuple(float(v) for v in ratios.split(",") if v.strip())
+    fits = sweep(values)
+
+    table = Table(title="PRBM constants fitted to the beam FEA")
+    table.add_column("load ratio P*L/M", justify="right")
+    table.add_column("gamma", justify="right")
+    table.add_column("pivot from root", justify="right")
+    table.add_column("K / (EI/L)", justify="right")
+    table.add_column("fit rms / L", justify="right")
+    for fit in fits:
+        table.add_row(
+            f"{fit.load_ratio:.2f}",
+            f"{fit.gamma:.4f}",
+            f"{fit.pivot_fraction:.4f}",
+            f"{fit.stiffness_multiple:.4f}",
+            f"{fit.fit_rms_over_length:.2e}",
+        )
+    console.print(table)
+
+    report = recommend_variant()
+    console.print(f"[green]recommended variant: {report['recommended']}[/]")
+    console.print(report["reason"])
+
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"sweep": [f.to_dict() for f in fits], **report}
+        json_out.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+        console.print(f"wrote {json_out}")
+
+
+@app.command()
+def torque(
+    linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
+    measured_csv: Annotated[
+        Path | None, typer.Option("--measured", help="Filled-in torque template")
+    ] = None,
+    template_out: Annotated[
+        Path | None, typer.Option("--template", help="Write a blank data template here")
+    ] = None,
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
+    thickness_mm: Annotated[float | None, typer.Option(help="Flexure thickness")] = None,
+    steps: Annotated[int, typer.Option(help="Samples across the input arc")] = 21,
+    json_out: Annotated[Path | None, typer.Option("--json", help="Write the report")] = None,
+) -> None:
+    """Compare a measured input-torque curve against the PRBM and beam FEA.
+
+    Torque is the measurement that tests the stiffness model. The coupler path
+    does not: with a prescribed input and no external load it is fixed by geometry,
+    so it is the same whatever the flexures are made of.
+    """
+    from cmtool.api import convert as convert_api
+    from cmtool.cad.mechanism import MechanismCadSpec, build_mechanism
+    from cmtool.convert.arc import ArcFitError, fit_input_arc
+    from cmtool.metrics import compare, read_measurements, write_template
+
+    linkage = Linkage.from_json(linkage_json)
+    arc: tuple[float, float] | None
+    try:
+        arc = fit_input_arc(linkage, max_joint_excursion_deg=22.0).input_range_deg
+    except ArcFitError:
+        arc = linkage.input_range_deg
+
+    mech = convert_api(linkage, printer=printer, input_range_deg=arc, thickness_mm=thickness_mm)
+    _, layout = build_mechanism(mech, spec=MechanismCadSpec(), printer=None)
+
+    if template_out is not None:
+        path = write_template(
+            template_out,
+            lever_radius_mm=layout.force_radius_mm,
+            input_range_deg=mech.input_range_deg,
+            printer=printer,
+        )
+        console.print(
+            f"wrote {path} (lever radius {layout.force_radius_mm:.2f} mm, "
+            "hook the scale through the hole and pull perpendicular)"
+        )
+
+    prbm = simulate(mech, solver="prbm", n_steps=steps)
+    fea = simulate(mech, solver="beam_fea", n_steps=steps)
+
+    predictions: dict[str, tuple[Any, Any]] = {}
+    for name, solved in (("prbm", prbm), ("beam_fea", fea)):
+        if solved.input_torque_nmm is None:
+            console.print(f"[red]{name} produced no torque curve[/]")
+            raise typer.Exit(code=1)
+        predictions[name] = (solved.input_angles_deg, solved.input_torque_nmm)
+    summary = Table(title=f"predicted input torque for {linkage.name}")
+    summary.add_column("model")
+    summary.add_column("peak |T| (N*mm)", justify="right")
+    summary.add_column("peak force at lever (N)", justify="right")
+    for name, (_, values) in predictions.items():
+        peak = float(max(abs(v) for v in values))
+        summary.add_row(
+            name,
+            f"{peak:.2f}",
+            f"{peak / max(layout.force_radius_mm, 1e-9):.3f}",
+        )
+    console.print(summary)
+    peaks = {name: float(max(abs(v) for v in values)) for name, (_, values) in predictions.items()}
+    console.print(
+        "[dim]the two models disagree on torque by "
+        f"{abs(peaks['prbm'] - peaks['beam_fea']):.1f} N*mm at peak, which is what the "
+        "measurement resolves[/]"
+    )
+
+    if measured_csv is None:
+        console.print("[yellow]no --measured file given; predictions only[/]")
+        return
+
+    readings = read_measurements(measured_csv)
+    if not readings:
+        console.print(f"[red]no filled-in rows found in {measured_csv}[/]")
+        raise typer.Exit(code=1)
+
+    comparison = compare(readings, predictions)
+    table = Table(title=f"measured vs predicted ({comparison.n_readings} readings)")
+    table.add_column("model")
+    table.add_column("mean |err| (N*mm)", justify="right")
+    table.add_column("max |err| (N*mm)", justify="right")
+    table.add_column("mean rel err", justify="right")
+    table.add_column("bias (N*mm)", justify="right")
+    for name, errors in comparison.model_errors.items():
+        table.add_row(
+            name,
+            f"{errors['mean_abs_error_nmm']:.2f}",
+            f"{errors['max_abs_error_nmm']:.2f}",
+            f"{errors['mean_relative_error'] * 100:.1f}%",
+            f"{errors['bias_nmm']:+.2f}",
+        )
+    console.print(table)
+    if comparison.hysteresis_nmm is not None and comparison.hysteresis_fraction is not None:
+        console.print(
+            f"hysteresis (loading vs unloading): {comparison.hysteresis_nmm:.2f} N*mm "
+            f"({comparison.hysteresis_fraction * 100:.1f}% of peak) - a material property, "
+            "not a model error"
+        )
+
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(
+            json.dumps(comparison.to_dict(), indent=2, default=str) + "\n", encoding="utf-8"
+        )
+        console.print(f"wrote {json_out}")
 
 
 @app.command()

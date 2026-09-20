@@ -4,10 +4,9 @@ This file records the modelling decisions the code depends on, and — more impo
 where each model stops being valid. Every number the toolkit produces should be traceable
 to something written down here.
 
-> **Status.** Rigid kinematics (A1), flexure sizing and feasibility (A2) and the PRBM
-> quasi-static solver (A3) are implemented. Beam FEA (A4) and camera tracking (A5) are
-> specified here but not yet written; sections marked *(planned)* describe what will be
-> built, not what exists.
+> **Status.** Rigid kinematics (A1), flexure sizing and feasibility (A2), the PRBM
+> quasi-static solver (A3) and the nonlinear beam FEA (A4) are implemented and validated.
+> Camera tracking (A5) is specified here but not yet written.
 
 ---
 
@@ -108,14 +107,51 @@ test (A3, week 3).
 A prismatic flexure is one piece of geometry with **two** pseudo-rigid-body models,
 selected by the length ratio `L_flexure / L_link`:
 
-| | pivot | stiffness | when |
+| | pivot from the root | stiffness | γ, K_Θ |
 |---|---|---|---|
-| `small_length` | centre of the flexure | `K = E I / L` | ratio ≤ 0.1 |
-| `long_segment` (Howell) | `(1 − γ) L` from the root | `K = γ K_Θ E I / L` | ratio > 0.1 |
+| `small_length` | `0.5 L` (the centre) | `K = E I / L` | — |
+| `long_segment`, end force | `(1 − γ) L` = 0.15 L | `K = γ·K_Θ·E I / L` = 2.25 EI/L | 0.85, 2.65 |
+| `long_segment`, end moment | `(1 − γ) L` = 0.265 L | `K = K_Θ·E I / L` = 1.52 EI/L | 0.7346, 1.5164 |
 
-with `I = w t³ / 12`, `γ ≈ 0.85` and `K_Θ ≈ 2.65`. The constants live in
-`configs/models/prbm.yaml` with citations and `status: literature` — published results,
-neither ours nor guesses, and flagged **unverified until A4's beam FEA checks them**.
+with `I = w t³ / 12`. Two things here are easy to get wrong.
+
+**The stiffness formula differs by loading case.** End force multiplies by γ; end moment
+does not. Multiplying the two end-moment constants together gives ≈1.11, which looks as
+though it would erase the step at the model boundary. It does not — the correct
+end-moment stiffness is 1.52 EI/L.
+
+**The pivot is at `(1 − γ) L` from the root, not `γ L`.** The rigid link of length `γL`
+runs from the pivot to the tip, so the pivot is that far *back*. Fitting the exact
+circular arc with the pivot at `(1−γ)L` reproduces the tip path to 2×10⁻⁴ L; the other
+convention is off by 0.15 L, about 900× worse, and for γ = 0.85 the rigid link is then too
+short to reach the tip at all.
+
+### Which variant, and how we know
+
+**The end-moment variant.** Not assumed — determined by our own beam FEA
+(`cmtool prbm-study`), which loads a cantilever flexure with a tip moment `M` and
+transverse force `P` at ratio `λ = PL/M` and fits γ and K to the resulting tip path:
+
+| λ = PL/M | γ | K/(EI/L) |
+|---|---|---|
+| 0 (pure moment) | 0.749 | 1.500 |
+| **0.1 (a flexure joint)** | **0.754** | **1.523** |
+| 1.0 | 0.783 | 1.676 |
+| 5.0 (force-heavy) | 0.819 | 1.949 |
+
+A flexure joint is **moment-dominated**. Under no external load the only forces in a
+compliant four-bar are those bending the other flexures, so the moment a flexure carries
+is of order `K·Δφ ~ (EI/L)Δφ` while the transverse force is of order that divided by a
+link length. Their ratio is `λ ~ L/l` — the flexure's own length ratio, about 0.1.
+
+At λ = 0.1 the end-moment variant is within **0.5%** on stiffness; end-force is off by
+**48%**.
+
+The end-moment constants are independently corroborated twice over: the exact circular arc
+gives γ → 3/4 and K_Θ → 3/2 analytically in the small-angle limit, and the FEA fit gives
+0.749 / 1.500. Both agree with the published 0.7346 / 1.5164 to about 2%. The end-force
+constants are corroborated in *trend* but not to that precision, because the sweep does not
+reach the pure-force limit; that stays open.
 
 ### Validity does not filter
 
@@ -142,9 +178,10 @@ Feasibility is these two, and nothing else. A joint's **utilisation** is their r
 
 ### The discontinuity at the switch
 
-The two models do not agree where they meet: `γ K_Θ = 0.85 × 2.65 ≈ 2.25`, so `K` jumps by
-a factor of 2.25 across the threshold. Physical stiffness does not jump, which means
-neither model is trustworthy right there.
+The two models still do not agree where they meet. With the end-moment variant the step is
+`1.52×` rather than the `2.25×` the end-force variant would give — a real improvement, and
+one that came out of choosing the variant on evidence, but not an elimination. Physical
+stiffness does not jump at all, so neither model is trustworthy right at the threshold.
 
 These samples are **flagged** (`near_model_boundary`) rather than blended. Blending would
 be inventing a model, and inventing a model is the same sin as inventing a measurement.
@@ -152,8 +189,15 @@ Resolving that region is one of the things A4 is for.
 
 ### What is recorded per sample
 
-`length_ratio`, `small_length_limit`, the `model` chosen, `is_small_length`,
-`near_model_boundary`, `within_model_angle`, `model_verified`, and `slenderness`.
+`length_ratio`, `small_length_limit`, the `model` chosen (including its variant),
+`is_small_length`, `near_model_boundary`, `within_model_angle`, `model_verified`,
+`slenderness`, and the `pivot_fraction` the chosen model puts the characteristic pivot at.
+
+That last one matters for geometry as well as kinematics: **pivot matching places the
+flexure so the *model's* pivot lands on the rigid joint**, which means centring it only for
+the small-length model. A long segment pivots at `(1−γ)L ≈ 0.265 L` from its root, so the
+strip sits asymmetrically about the joint. Centring one would put its pivot about 0.24 L
+away from where the kinematics assume it is.
 
 Phase A *prefers* small-length designs for pilot prints — the search ranks them higher —
 but keeps the rest.

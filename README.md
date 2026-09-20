@@ -11,10 +11,9 @@ compliant counterparts, including paths measured on real FDM-printed parts.
 model and FEA) transfer to FDM-printed parts, and can a learned model close that
 simulation-to-reality gap?
 
-> **Status: Phase A pilot, milestone A3.** Rigid four-bar kinematics, flexure sizing and
-> feasibility, design search, the PRBM quasi-static solver and printable CAD for both the
-> test coupons and the mechanisms all work and are validated. Beam FEA (A4) and camera
-> tracking (A5) are next.
+> **Status: Phase A pilot, milestone A4.** Rigid kinematics, flexure sizing and
+> feasibility, design search, the PRBM solver, the nonlinear beam FEA and printable CAD for
+> both coupons and mechanisms all work and are validated. Camera tracking (A5) is next.
 >
 > **No physical measurements exist yet.** Every material constant and the minimum printable
 > flexure thickness are explicitly flagged placeholders, so every feasibility verdict the
@@ -74,9 +73,11 @@ cm.feasibility.binding_joint     # which joint is limiting the design
 cm.sizing["B"].limit_reason      # and why, in words
 cm.feasibility.prbm_models       # which PRBM model each joint needs (metadata, not a filter)
 
-res = simulate(cm, solver="prbm", n_steps=61)
-res.input_torque_nmm             # torque to hold each input angle
-res.flexure_strain["B"]          # strain in joint B's flexure along the arc
+prbm = simulate(cm, solver="prbm", n_steps=61)      # milliseconds
+fea = simulate(cm, solver="beam_fea", n_steps=61)   # seconds, no PRBM assumptions
+
+prbm.input_torque_nmm            # torque to hold each input angle
+fea.flexure_strain["B"]          # strain in joint B's flexure along the arc
 ```
 
 From the command line:
@@ -87,6 +88,8 @@ cmtool design --seed 2 --out out/designs         # search for buildable four-bar
 cmtool convert examples/designs/fb_02_0052.json  # per-joint feasibility table
 cmtool export examples/designs/fb_02_0052.json   # printable mechanism + print sheet
 cmtool simulate examples/fourbar.json --csv out/rigid_path.csv
+cmtool prbm-study                                # which PRBM variant fits, from the FEA
+cmtool torque examples/designs/fb_02_0052.json   # predicted torque, and measured comparison
 ```
 
 ## The design rule that governs everything
@@ -153,11 +156,13 @@ six-bar or a new flexure type is an addition, not a rewrite — see
 src/cmtool/
   core/        linkage graph, units, registries, provenance, config, quantities
   kinematics/  position solvers, dispatched by topology
-  solvers/     rigid | prbm | beam_fea | solid_fea -> one SimulationResult type
+  solvers/     rigid | prbm | beam_fea -> one SimulationResult type, plus
+               exact references and the PRBM-variant study
   flexures/    geometry, PRBM models (small-length and Howell), own strain model
   convert/     arc fitting, flexure sizing, feasibility, design search
   cad/         coupons, mechanism CAD, printability checks, STEP/STL, print sheets
   materials/   materials and printers loaded from configs with provenance
+  metrics/     torque measurement templates and model comparison
   schema/      pydantic models; JSON Schema is generated from them
   vision/ metrics/ dataset/ viz/   (later milestones)
 ```
@@ -168,11 +173,12 @@ Physics conventions and validity limits: [docs/physics.md](docs/physics.md).
 
 | | |
 |---|---|
-| Primary printer | **Bambu Lab A1** — all Phase A and B parts, to keep printer variation out of the measurement |
-| Secondary | Anycubic Kobra 2 Neo, reserved for a possible Phase C printer comparison |
+| Primary printer | **Anycubic Kobra 2 Neo** — all Phase A and B parts, to keep printer variation out of the measurement. Took over from the A1 on 2026-09-20 when the A1 became unavailable; nothing had been printed yet, so the switch cost no data |
+| Secondary | Bambu Lab A1, reserved for a possible Phase C printer comparison |
 | Both | 0.4 mm nozzle, 0.2 mm layer height, 180 × 180 mm design envelope so parts fit either bed |
 | Material | eSun PLA (product line, colour and lot still to be recorded from the spool label) |
 | Orientation | Flat on the bed, mechanism plane parallel to it, so flexures bend in-plane |
+| Slicer | OrcaSlicer for the Kobra, Bambu Studio for the A1; both print sheets carry the settings, and **Arachne** is the one that matters |
 
 ## Development
 

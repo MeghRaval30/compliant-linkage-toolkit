@@ -62,7 +62,7 @@ class TestSimulate:
     def test_unknown_solver_lists_alternatives(self, mech):
         from cmtool.core.registry import RegistryError
 
-        with pytest.raises(RegistryError, match="available: prbm, rigid"):
+        with pytest.raises(RegistryError, match="available: beam_fea, prbm, rigid"):
             simulate(mech, solver="magic")
 
     def test_rigid_result_is_physical_because_it_uses_no_material_data(self, mech):

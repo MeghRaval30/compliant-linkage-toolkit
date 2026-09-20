@@ -681,6 +681,23 @@
           "default": null,
           "title": "Print Date"
         },
+        "print_purpose": {
+          "anyOf": [
+            {
+              "enum": [
+                "trial",
+                "data"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'trial' while settings were still being adjusted, 'data' for a part printed under a frozen recipe. Only 'data' prints belong in the dataset.",
+          "title": "Print Purpose"
+        },
         "printer": {
           "anyOf": [
             {
@@ -691,6 +708,7 @@
             }
           ],
           "default": null,
+          "description": "Config name of the machine the part was printed on",
           "title": "Printer"
         },
         "room_humidity_percent": {

@@ -7,10 +7,16 @@ assembly, no pin joints, no friction.
 Construction
 ------------
 Every joint gets a flexure: a thin prismatic strip of length ``L`` and thickness
-``t``, **centred on the original joint** and aligned with its host link. Centring
-is what makes the placement pivot-matched: a small-length flexure behaves as a
-pin at its own centre, so putting that centre on the rigid joint keeps the
-effective link lengths unchanged.
+``t``, aligned with its host link and placed so that its **characteristic pivot**
+lands on the original rigid joint. That is what pivot matching means, and it
+keeps the effective link lengths unchanged.
+
+Where the pivot sits depends on which pseudo-rigid-body model applies. The
+small-length model pivots at the flexure's centre, so the strip is centred on the
+joint. A long segment pivots at ``(1 - gamma) L`` from its root -- about 0.15 L
+for the end-force variant -- so the strip sits asymmetrically and most of it lies
+on the far side of the joint. Centring a long segment would put its pivot roughly
+``0.35 L`` away from where the kinematics assume it is.
 
 Each body then becomes a straight bar between its two **attachment points**,
 where the attachment point at a joint is the end of that joint's flexure on the
@@ -19,6 +25,12 @@ hosts which flexure.
 
 The ground body is not a bar but the base plate, carrying M3 clearance holes for
 the reusable fixture and two fiducial pads at a known spacing.
+
+The input lever carries two features: a marker pad at its tip, and a through-hole
+at a **known radius** from the input pivot for hooking a spring scale to. The
+coupler path is insensitive to flexure stiffness, so it cannot test the stiffness
+model at all; the input torque is directly proportional to it. Measuring torque is
+what makes the PRBM-versus-FEA stiffness disagreement checkable against reality.
 
 Marker pads are all raised by the same amount above the part's top face, so the
 base fiducials, the lever marker and the coupler marker are **coplanar**. The
@@ -64,6 +76,8 @@ class MechanismCadSpec:
     base_margin_mm: float = 14.0
     bolt_diameter_mm: float = 3.4
     bolt_inset_mm: float = 8.0
+    force_hole_diameter_mm: float = 4.0
+    force_point_fraction: float = 0.8
     fillet_radius_mm: float = 0.0
     part_thickness_mm: float | None = None
 
@@ -109,15 +123,19 @@ def _bar(start: FloatArray, end: FloatArray, width: float, depth: float) -> cq.W
     return solid
 
 
-def _strip(
-    centre: FloatArray, direction: FloatArray, length: float, thickness: float, depth: float
+def joint_name_other_body(linkage: Linkage, joint: str, host: str) -> str:
+    """Return the body on the far side of ``joint`` from ``host``."""
+    return linkage.joints[joint].other(host)
+
+
+def _strip_between(
+    start: FloatArray, end: FloatArray, thickness: float, depth: float
 ) -> cq.Workplane:
-    """Return a prismatic strip of given length and thickness, centred on a point."""
-    unit = _unit(direction)
-    half = unit * (length / 2.0)
+    """Return a prismatic strip of the given thickness spanning two points."""
+    unit = _unit(np.asarray(end, dtype=float) - np.asarray(start, dtype=float))
     offset = _normal(unit) * (thickness / 2.0)
-    start = np.asarray(centre, dtype=float) - half
-    end = np.asarray(centre, dtype=float) + half
+    start = np.asarray(start, dtype=float)
+    end = np.asarray(end, dtype=float)
     corners = [
         tuple(start + offset),
         tuple(end + offset),
@@ -153,6 +171,8 @@ class MechanismLayout:
     fiducial_pads_mm: list[tuple[float, float]] = field(default_factory=list)
     fiducial_spacing_mm: float = 0.0
     lever_pad_mm: tuple[float, float] | None = None
+    force_point_mm: tuple[float, float] | None = None
+    force_radius_mm: float = 0.0
     coupler_pad_mm: tuple[float, float] | None = None
     pad_plane_z_mm: float = 0.0
     lever_clears_base: bool = True
@@ -170,6 +190,8 @@ class MechanismLayout:
             "fiducial_pads_mm": [list(p) for p in self.fiducial_pads_mm],
             "fiducial_spacing_mm": self.fiducial_spacing_mm,
             "lever_pad_mm": list(self.lever_pad_mm) if self.lever_pad_mm else None,
+            "force_point_mm": list(self.force_point_mm) if self.force_point_mm else None,
+            "force_radius_mm": self.force_radius_mm,
             "coupler_pad_mm": list(self.coupler_pad_mm) if self.coupler_pad_mm else None,
             "pad_plane_z_mm": self.pad_plane_z_mm,
             "lever_clears_base": self.lever_clears_base,
@@ -187,17 +209,23 @@ def _attachment_points(
     for joint_name, joint in linkage.joints.items():
         sized = mechanism.sizing[joint_name]
         host = sized.host_body
-        centre = joint.position_mm
+        pivot = joint.position_mm
 
         far = [j for j in linkage.joints_of(host) if j != joint_name]
-        toward = linkage.joints[far[0]].position_mm - centre if far else np.array([1.0, 0.0])
+        toward = linkage.joints[far[0]].position_mm - pivot if far else np.array([1.0, 0.0])
         axis = _unit(toward)
         axes[joint_name] = axis
 
-        half = axis * (sized.geometry.length_mm / 2.0)
+        # Pivot matching means the model's CHARACTERISTIC PIVOT lands on the rigid
+        # joint -- not the flexure's midpoint. That is the same thing only for the
+        # small-length model, whose pivot happens to be at the centre. A long
+        # segment pivots at (1 - gamma) L from its root, so the flexure sits
+        # asymmetrically about the joint and most of it lies on the far side.
+        length = sized.geometry.length_mm
+        from_root = sized.pivot_from_root_mm
         other = joint.other(host)
-        attachments[host][joint_name] = centre + half
-        attachments[other][joint_name] = centre - half
+        attachments[host][joint_name] = pivot + axis * from_root
+        attachments[other][joint_name] = pivot - axis * (length - from_root)
 
     return attachments, axes
 
@@ -301,17 +329,11 @@ def build_mechanism(
         solid = solid.union(_bar(points[0], points[1], spec.link_width_mm, depth))
 
     # --- flexures ---------------------------------------------------------
-    for joint_name, joint in linkage.joints.items():
+    for joint_name in linkage.joints:
         sized = mechanism.sizing[joint_name]
-        solid = solid.union(
-            _strip(
-                joint.position_mm,
-                axes[joint_name],
-                sized.geometry.length_mm,
-                sized.geometry.thickness_mm,
-                depth,
-            )
-        )
+        root = attachments[sized.host_body][joint_name]
+        tip = attachments[joint_name_other_body(linkage, joint_name, sized.host_body)][joint_name]
+        solid = solid.union(_strip_between(root, tip, sized.geometry.thickness_mm, depth))
 
     # --- input lever, pointing away from the driven link ------------------
     input_joint = linkage.joints[linkage.input_joint]
@@ -322,6 +344,20 @@ def build_mechanism(
     solid = solid.union(_bar(input_joint.position_mm, lever_tip, spec.lever_width_mm, depth))
     layout.lever_pad_mm = (float(lever_tip[0]), float(lever_tip[1]))
     solid = solid.union(_pad(lever_tip, spec.pad_size_mm * 0.6, depth, spec.pad_thickness_mm))
+
+    # Through-hole for a hook, so input torque can be measured with a hand scale.
+    # The path barely responds to flexure stiffness but the torque responds to it
+    # directly, so torque is the measurement that actually tests the stiffness model.
+    radius = spec.lever_length_mm * spec.force_point_fraction
+    force_point = input_joint.position_mm - toward_link * radius
+    layout.force_point_mm = (float(force_point[0]), float(force_point[1]))
+    layout.force_radius_mm = float(radius)
+    solid = solid.cut(
+        cq.Workplane("XY")
+        .moveTo(float(force_point[0]), float(force_point[1]))
+        .circle(spec.force_hole_diameter_mm / 2.0)
+        .extrude(depth)
+    )
 
     layout.lever_clears_base = _lever_clears_base(
         mechanism, linkage, spec, origin, along, normal, width

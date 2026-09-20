@@ -294,7 +294,7 @@ def sampling_link_floor_mm(
     max_joint_excursion_deg: float,
     *,
     material: str = "PLA",
-    printer: str = "bambu_a1",
+    printer: str = "kobra2_neo",
     thickness_mm: float | None = None,
     unstressed_at: str = "mid_arc",
     max_length_fraction: float | None = None,
@@ -366,7 +366,7 @@ def search(
     floor = sampling_link_floor_mm(
         max_joint_excursion_deg,
         material=evaluate_options.get("material", "PLA"),
-        printer=evaluate_options.get("printer", "bambu_a1"),
+        printer=evaluate_options.get("printer", "kobra2_neo"),
         thickness_mm=evaluate_options.get("thickness_mm"),
         unstressed_at=evaluate_options.get("unstressed_at", "mid_arc"),
     )

@@ -1,15 +1,25 @@
-# SECONDARY printer. NOT used for Phase A or Phase B parts.
+# PRIMARY printer for Phase A and Phase B.
 #
-# Recorded so it is available for a possible Phase C printer-comparison study.
-# Keeping Phase A/B on one machine avoids confounding printer variation with the
-# simulation-to-reality gap.
+# Changed from the Bambu Lab A1 on 2026-09-20: the A1 is not currently available,
+# and the whole point of naming a primary machine is that ONE machine prints every
+# Phase A and B part. Switching mid-phase is the confound we are trying to avoid,
+# so the machine that is actually available becomes the primary one rather than
+# the machine we would otherwise have preferred.
+#
+# The A1 is now the secondary, held for the Phase C printer-comparison study --
+# which is a better use of it than splitting the pilot across two machines.
+#
+# If the A1 comes back and you want to switch, the switch itself is cheap (swap
+# `role` here and in bambu_a1.yaml) but the DATA is not: anything already printed
+# on the Kobra would have to be reprinted, or the comparison becomes the study
+# rather than the control. Decide before the first `print_purpose: data` part.
 
 name: "kobra2_neo"
 model: "Anycubic Kobra 2 Neo"
-role: "secondary"
+role: "primary"
 status: confirmed
-source: "Stated by the team."
-use: "Phase C printer-comparison study only."
+source: "Team decision, 2026-09-20: the A1 is unavailable; printing at home on the Kobra."
+use: "All Phase A and Phase B parts."
 
 nozzle_diameter_mm:
   value: 0.4
@@ -24,7 +34,7 @@ bed:
   design_envelope_mm:
     value: [180.0, 180.0]
     status: confirmed
-    source: "Same envelope as the A1, so parts are interchangeable between printers."
+    source: "Kept unchanged so parts remain interchangeable between both printers."
   shape: "rectangular"
   machine_size_mm:
     value: null
@@ -34,34 +44,105 @@ bed:
     note: "PLACEHOLDER: confirm from the printer or the manufacturer specification page."
 
 design_rules:
-  # Inherited from the primary printer so that a part designed for one prints on the
-  # other unchanged. Any Phase C comparison must re-measure these on this machine.
   min_flexure_thickness_mm:
     value: null
     provisional_value: 0.6
     status: placeholder
-    note: "PLACEHOLDER: this printer has not been characterised. Re-run the flexure coupon here before any Phase C comparison."
+    source: "1.5x nozzle diameter as a starting guess. NOT a measured print limit."
+    note: |
+      PLACEHOLDER: set from the flexure test coupon printed ON THIS MACHINE. The
+      A1's answer would not transfer -- this is exactly the kind of number that
+      differs between printers. Team decision: hold flexure thickness at 0.6 mm
+      until the coupon is measured, then switch to 0.4 mm if it prints reliably.
   min_link_width_mm:
     value: 3.0
     status: design_choice
+    source: "Keeps rigid links stiff relative to flexures."
   part_thickness_mm:
     value: 6.0
     status: design_choice
+    source: |
+      Out-of-plane depth. Gives I_out/I_in = (w/t)^2 ~ 100 at t = 0.6 mm, so the part
+      is far stiffer out of plane than in it. See docs/physics.md section 7.
   min_feature_clearance_mm:
     value: 0.4
     status: design_choice
+    source: "One nozzle width, so adjacent features do not fuse."
 
 orientation:
   mechanism_plane: "parallel_to_bed"
   status: confirmed
+  source: "Stated by the team."
+  note: "Flexures bend in-plane, so inter-layer bonds are not loaded in tension."
 
+# Slicer guidance for OrcaSlicer. DESIGN CHOICES aimed at printing thin flexures
+# consistently, not measurements. Verify the setting names in your OrcaSlicer
+# version; they drift between releases and differ slightly from Bambu Studio's.
 slicer:
-  target: "generic (Cura / PrusaSlicer / OrcaSlicer)"
+  target: "OrcaSlicer"
   status: design_choice
   settings:
     wall_generator:
       value: "Arachne"
-      why: "Same reasoning as the A1: required for sub-2-perimeter flexures."
+      why: |
+        The single most important setting. Arachne varies extrusion width to fill
+        thin features exactly. The classic generator works in whole-nozzle-width
+        perimeters and will thin, distort or silently drop a sub-2-perimeter wall --
+        which is every flexure in this project. In OrcaSlicer this is under
+        Quality > Precision > Wall generator.
+    wall_loops:
+      value: 4
+      why: "Enough perimeters that rigid links are solid; flexures are thinner than this and become a single variable-width wall."
     sparse_infill_density_percent:
       value: 100
-      why: "Uniform density so rigid links are rigid."
+      why: |
+        Rigid links must be rigid, and density must be uniform for a modulus measured
+        on a coupon to apply to a mechanism. Sparse infill makes 'rigid' links
+        compliant and adds a second unmeasured variable.
+    sparse_infill_pattern:
+      value: "rectilinear"
+      why: "At 100 percent the pattern barely matters, but rectilinear is predictable and fast."
+    detect_thin_wall:
+      value: true
+      why: "Prevents narrow regions being skipped entirely."
+    first_layer_height_mm:
+      value: 0.2
+      why: |
+        Same as the rest. A thicker first layer would make the bottom layer of a
+        0.6 mm flexure a different width from the layers above it, which is a
+        geometry error in the dimension that matters most.
+    first_layer_flow_ratio:
+      value: 1.0
+      why: |
+        Leave nominal. The usual habit of over-extruding the first layer for adhesion
+        widens the bottom of every flexure. Use a brim for adhesion instead.
+    flow_ratio:
+      value: null
+      status: placeholder
+      note: |
+        PLACEHOLDER: calibrate on this machine before the first `print_purpose: data`
+        part. Flow error goes straight into flexure thickness, which enters stiffness
+        as t^3 -- a 5 percent flow error is a 16 percent stiffness error. Calibrate
+        with a flow test, then record the value here with status: measured.
+    brim_type:
+      value: "outer_only"
+      why: "The strain-test strips are tall free-standing walls and will topple without a brim."
+    seam_position:
+      value: "aligned, placed away from flexures"
+      why: "A layer seam on a flexure is a stress concentrator and a crack initiation site."
+    outer_wall_speed_mm_per_s:
+      value: 25
+      why: |
+        Slower than the A1 setting: the Kobra is a bed-slinger, so inertia on a tall
+        thin wall is worse. Reduce further if 0.4-0.5 mm strips come out inconsistent.
+    supports:
+      value: false
+      why: "Parts are designed flat with the mechanism plane on the bed; support material on a flexure would ruin its surface."
+    nozzle_temperature_c:
+      value: null
+      status: placeholder
+      note: "PLACEHOLDER: use the filament vendor's figure for the actual spool and log it."
+    bed_temperature_c:
+      value: null
+      status: placeholder
+      note: "PLACEHOLDER: as above."

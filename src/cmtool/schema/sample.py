@@ -198,7 +198,16 @@ class SimulatedSpec(Base):
 class PrintMetadata(Base):
     """Everything needed to reproduce a printed specimen."""
 
-    printer: str | None = None
+    printer: str | None = Field(
+        default=None, description="Config name of the machine the part was printed on"
+    )
+    print_purpose: Literal["trial", "data"] | None = Field(
+        default=None,
+        description=(
+            "'trial' while settings were still being adjusted, 'data' for a part printed "
+            "under a frozen recipe. Only 'data' prints belong in the dataset."
+        ),
+    )
     material: str | None = None
     brand: str | None = None
     lot_id: str | None = None

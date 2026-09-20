@@ -65,7 +65,7 @@ class NaiveStrategy:
         *,
         flexure_type: str = "small_length_pivot",
         material: str = "PLA",
-        printer: str = "bambu_a1",
+        printer: str = "kobra2_neo",
         placement: str = "pivot_matched",
         unstressed_at: str = "mid_arc",
         input_range_deg: tuple[float, float] | None = None,
@@ -200,6 +200,7 @@ class NaiveStrategy:
                 ),
                 host_body=host,
                 pivot_offset_mm=(0.0 if placement == "pivot_matched" else pivot_fraction * length),
+                pivot_fraction=pivot_fraction,
             )
 
         report = FeasibilityReport(
