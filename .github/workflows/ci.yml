@@ -31,7 +31,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install project
-        run: uv sync --python ${{ matrix.python-version }} --extra dev --extra plot --extra data
+        run: uv sync --python ${{ matrix.python-version }} --extra dev --extra plot --extra data --extra cad
 
       - name: Test
         run: uv run pytest --cov=cmtool --cov-report=term-missing --cov-report=xml
@@ -48,7 +48,7 @@ jobs:
           enable-cache: true
 
       - name: Install project
-        run: uv sync --python 3.12 --extra dev --extra plot --extra data
+        run: uv sync --python 3.12 --extra dev --extra plot --extra data --extra cad
 
       - name: Lint
         run: uv run ruff check src tests

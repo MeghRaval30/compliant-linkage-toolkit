@@ -18,6 +18,8 @@ build/
 dist/
 *.egg-info/
 
+# uv.lock IS committed: the pinned environment is part of reproducibility.
+
 # Python
 __pycache__/
 *.py[cod]
