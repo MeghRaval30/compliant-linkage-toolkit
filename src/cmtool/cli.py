@@ -909,6 +909,44 @@ def view_cmd(
         console.print(f"wrote {json_out}")
 
 
+@app.command(name="ui")
+def ui_cmd(
+    host: Annotated[str, typer.Option(help="Interface to bind; loopback only by default")] = (
+        "127.0.0.1"
+    ),
+    port: Annotated[int | None, typer.Option(help="Port; picks a free one when busy")] = None,
+    open_browser: Annotated[
+        bool, typer.Option("--open/--no-open", help="Open a browser once the server is up")
+    ] = True,
+) -> None:
+    """Start the local design UI and open it in a browser.
+
+    One command, no build step and no network: the page and its script ship
+    inside the package, and the server binds loopback. Edit the four link
+    lengths, the coupler point, the arc and the flexures, press solve, and get
+    the feasibility verdict, the animated mechanism, the path overlay, the
+    torque curve and the per-flexure strain -- all from the same solvers the CLI
+    uses.
+    """
+    from cmtool.ui.server import DEFAULT_HOST, find_port, serve
+
+    try:
+        chosen = port or find_port(host or DEFAULT_HOST)
+    except OSError as exc:
+        console.print(f"[red]could not bind {host}: {exc}[/]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"cmtool UI on [bold]http://{host}:{chosen}/[/] -- Ctrl+C to stop")
+    console.print("[dim]local only: loopback, no network access, nothing fetched[/]")
+    try:
+        serve(host=host, port=chosen, open_browser=open_browser)
+    except ModuleNotFoundError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=2) from exc
+    except KeyboardInterrupt:  # pragma: no cover - interactive
+        console.print("stopped")
+
+
 @app.command(name="figures")
 def figures_cmd(
     out: Annotated[Path, typer.Option(help="Output directory")] = Path("docs/figures"),

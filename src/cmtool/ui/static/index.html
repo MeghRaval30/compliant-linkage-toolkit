@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cmtool</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>cmtool</h1>
+  <p class="sub" id="build">local &middot; offline</p>
+  <div class="spacer"></div>
+  <div id="verdict" class="verdict"></div>
+</header>
+
+<div id="banner"></div>
+
+<main>
+  <section class="panel" id="controls" aria-label="design parameters">
+    <div class="row">
+      <label for="preset">Preset</label>
+      <select id="preset">
+        <option value="">custom</option>
+      </select>
+    </div>
+
+    <fieldset>
+      <legend>Link lengths (mm)</legend>
+      <div class="grid2">
+        <label>ground<input type="number" id="ground_mm" step="0.5" min="1"></label>
+        <label>input<input type="number" id="input_mm" step="0.5" min="1"></label>
+        <label>coupler<input type="number" id="coupler_mm" step="0.5" min="1"></label>
+        <label>output<input type="number" id="output_mm" step="0.5" min="1"></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Coupler point (mm, at the reference pose)</legend>
+      <div class="grid2">
+        <label>x<input type="number" id="coupler_x_mm" step="0.5"></label>
+        <label>y<input type="number" id="coupler_y_mm" step="0.5"></label>
+      </div>
+      <p class="hint">Drag the marked point on the drawing to move it.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Input arc (deg)</legend>
+      <div class="grid2">
+        <label>reference<input type="number" id="input_angle_deg" step="1"></label>
+        <label>worst joint &le;<input type="number" id="target_excursion_deg" step="1" min="1"></label>
+        <label>start<input type="number" id="arc_start_deg" step="1" placeholder="auto"></label>
+        <label>end<input type="number" id="arc_end_deg" step="1" placeholder="auto"></label>
+      </div>
+      <p class="hint">Leave start and end empty to fit an arc to the excursion target.
+        A flexure cannot rotate continuously, so there is no full-revolution option.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Flexures</legend>
+      <div class="grid2">
+        <label>type<select id="flexure_type"></select></label>
+        <label>thickness (mm)<input type="number" id="thickness_mm" step="0.05" min="0.05"
+               placeholder="printer min"></label>
+        <label>material<input type="text" id="material"></label>
+        <label>printer<input type="text" id="printer"></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Solve</legend>
+      <div class="grid2">
+        <label>states<input type="number" id="n_steps" step="2" min="2" max="121"></label>
+        <label>name<input type="text" id="name"></label>
+      </div>
+      <div class="checks" id="solvers">
+        <label><input type="checkbox" value="rigid" checked> rigid</label>
+        <label><input type="checkbox" value="prbm" checked> PRBM</label>
+        <label><input type="checkbox" value="fea" checked> beam FEA</label>
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button id="solve" class="primary">Convert to compliant &amp; solve</button>
+    </div>
+    <div id="progress" class="progress" hidden>
+      <div class="bar"><span id="bar-fill"></span></div>
+      <span id="progress-text">solving</span>
+    </div>
+    <div id="error" class="error" hidden></div>
+
+    <div class="actions wrap">
+      <button id="dl-stl" disabled>Download STL</button>
+      <button id="dl-step" disabled>Download STEP</button>
+      <button id="dl-sheet" disabled>Print sheet</button>
+      <button id="dl-json">Save design JSON</button>
+      <button id="load-json">Load design JSON</button>
+      <input type="file" id="file" accept="application/json,.json" hidden>
+    </div>
+  </section>
+
+  <section class="panel wide" aria-label="results">
+    <div class="card">
+      <div class="card-head">
+        <h2>Mechanism</h2>
+        <div class="toggles" id="toggles"></div>
+      </div>
+      <svg id="view" role="img" aria-label="the mechanism at the selected input angle"></svg>
+      <div class="controls-row">
+        <button id="play" aria-pressed="false">Play</button>
+        <input id="slider" type="range" min="0" max="0" value="0" step="1"
+               aria-label="input angle step">
+        <div class="angle"><b id="angle">-</b> deg<br><span id="sweep"></span></div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="card">
+      <h2>Feasibility</h2>
+      <p id="why" class="why"></p>
+      <div class="scroll"><table id="joints"></table></div>
+    </div>
+
+    <div class="grid-charts">
+      <div class="card">
+        <h2 id="dev-title">Coupler path, distance from the reference</h2>
+        <svg id="deviation" role="img" aria-label="path deviation against input angle"></svg>
+        <p class="hint" id="dev-note"></p>
+      </div>
+      <div class="card">
+        <h2>Input torque (N&middot;mm)</h2>
+        <svg id="torque" role="img" aria-label="input torque against input angle"></svg>
+        <p class="hint" id="torque-note"></p>
+      </div>
+      <div class="card">
+        <h2>Flexure strain (%)</h2>
+        <svg id="strain" role="img" aria-label="peak flexure strain against input angle"></svg>
+        <p class="hint" id="strain-note"></p>
+      </div>
+      <div class="card">
+        <h2>Readouts</h2>
+        <div class="readouts" id="readouts"></div>
+      </div>
+    </div>
+
+    <p class="prov" id="prov"></p>
+  </section>
+</main>
+
+<script src="/shared/scene_draw.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

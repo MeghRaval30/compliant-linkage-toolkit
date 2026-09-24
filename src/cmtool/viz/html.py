@@ -89,13 +89,27 @@ def render_html(
     data = json.dumps(payload, allow_nan=False).replace("<", "\\u003c")
 
     return (
-        _TEMPLATE.replace("__TITLE__", _escape(title or f"cmtool viewer - {scene.name}"))
+        _TEMPLATE.replace("__SCENE_DRAW__", _scene_draw_js())
+        .replace("__TITLE__", _escape(title or f"cmtool viewer - {scene.name}"))
         .replace("__NAME__", _escape(scene.name))
         .replace("__FONT__", FONT_STACK)
         .replace("__INK_LIGHT__", _css_vars(INK["light"]))
         .replace("__INK_DARK__", _css_vars(INK["dark"]))
         .replace("__DATA__", data)
     )
+
+
+def _scene_draw_js() -> str:
+    """Return the shared drawing module's source, for inlining.
+
+    The standalone viewer must work with no network at all, so the module is
+    baked into the file rather than linked. It is still the *same file* the
+    local UI serves: one implementation, two delivery mechanisms.
+    """
+    from importlib import resources
+
+    module = resources.files("cmtool.viz") / "static" / "scene_draw.js"
+    return module.read_text(encoding="utf-8")
 
 
 def write_html(
@@ -294,6 +308,7 @@ _TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <script type="application/json" id="payload">__DATA__</script>
+<script>__SCENE_DRAW__</script>
 <script>
 (function () {
   "use strict";
@@ -320,7 +335,7 @@ _TEMPLATE = """<!DOCTYPE html>
   function strainColour(utilisation) {
     if (!isFinite(utilisation)) return ST.critical;
     if (utilisation >= 1) return ST.critical;
-    const r = ramp();
+    const r = D.ramp(ST);
     const pos = Math.max(0, utilisation) * (r.length - 1);
     const lo = Math.min(Math.floor(pos), r.length - 2);
     return mix(r[lo], r[lo + 1], pos - lo);
@@ -336,245 +351,36 @@ _TEMPLATE = """<!DOCTYPE html>
     return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
   }
 
-  // --- coordinate frame -----------------------------------------------
-  // Millimetres, y up. SVG y runs down, so every y is reflected about the
-  // midline of the bounds. Done in code rather than with a transform, so
-  // stroke widths stay in millimetres and text never comes out mirrored.
-  const [x0, y0, x1, y1] = S.bounds_mm;
-  const FLIP = y0 + y1;
-  const X = (v) => v;
-  const Y = (v) => FLIP - v;
-  const pts = (poly) => poly.map((p) => X(p[0]) + "," + Y(p[1])).join(" ");
+  // --- drawing ---------------------------------------------------------
+  // Every mark on this page is drawn by CmtoolScene, the same module the local
+  // UI loads from the server. It is inlined above rather than fetched, so this
+  // file still needs nothing from the network -- but it is the same source, so
+  // the two renderers cannot drift apart.
+  const D = window.CmtoolScene;
+  const inkOf = (name) =>
+    getComputedStyle(document.documentElement).getPropertyValue("--" + name).trim();
 
   const view = document.getElementById("view");
-  view.setAttribute("viewBox", x0 + " " + y0 + " " + (x1 - x0) + " " + (y1 - y0));
-  view.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  // An inline SVG with only a viewBox has no intrinsic height, and height:auto
-  // then resolves to whatever the box gives it. Stating the ratio pins it.
-  view.style.aspectRatio = (x1 - x0) + " / " + (y1 - y0);
-
-  const el = (name, attrs) => {
-    const node = document.createElementNS(SVGNS, name);
-    for (const k in attrs) node.setAttribute(k, attrs[k]);
-    return node;
-  };
-
+  const devSvg = document.getElementById("deviation");
   const has = (k) => Object.prototype.hasOwnProperty.call(S.models, k);
-  const frameOf = (k, i) => {
-    const m = S.models[k];
-    return m && m.frames && m.frames[i] ? m.frames[i] : null;
-  };
 
   const show = { rigid: has("rigid"), prbm: has("prbm"), fea: has("fea"),
                  measured: has("measured"), paths: true, trueScale: false };
 
+  let devSeries = [];
+
   function draw(i) {
-    while (view.firstChild) view.removeChild(view.firstChild);
-
-    // Coupler paths first, so the part sits on top of them.
-    if (show.paths) {
-      for (const key of ["rigid", "prbm", "fea", "measured"]) {
-        if (!has(key) || !show[key]) continue;
-        const s = ST.series[key];
-        view.appendChild(el("polyline", {
-          points: pts(S.models[key].path),
-          fill: "none",
-          stroke: colour(key),
-          "stroke-width": 0.7,
-          "stroke-dasharray": s.dash || "none",
-          "stroke-linecap": "round",
-          opacity: 0.95,
-        }));
-      }
-    }
-
-    // Ground: static, drawn from the scene's own ground polyline.
-    if (S.ground_polyline_mm && S.ground_polyline_mm.length === 2) {
-      view.appendChild(el("polyline", {
-        points: pts(S.ground_polyline_mm),
-        fill: "none",
-        stroke: ink("axis"),
-        "stroke-width": S.link_width_mm,
-        "stroke-linecap": "round",
-        opacity: 0.55,
-      }));
-    }
-
-    // The FEA part: links as true-width bars, each with a hairline ring, then
-    // flexures element by element so every element wears its own strain.
-    const fea = show.fea ? frameOf("fea", i) : null;
-    if (fea) {
-      for (const body in fea.links) {
-        view.appendChild(el("polyline", {
-          points: pts(fea.links[body]), fill: "none", stroke: ink("axis"),
-          "stroke-width": S.link_width_mm + 1.2,
-          "stroke-linecap": "round", "stroke-linejoin": "round",
-        }));
-        view.appendChild(el("polyline", {
-          points: pts(fea.links[body]), fill: "none", stroke: ink("grid"),
-          "stroke-width": S.link_width_mm,
-          "stroke-linecap": "round", "stroke-linejoin": "round",
-        }));
-      }
-      for (const joint in fea.flexures) {
-        const poly = fea.flexures[joint];
-        const strain = fea.strain[joint];
-        const trueWidth = S.flexure_thickness_mm[joint];
-        const width = show.trueScale ? trueWidth : Math.max(trueWidth, ST.minFlexureMm);
-        for (let e = 0; e < strain.length; e++) {
-          view.appendChild(el("line", {
-            x1: X(poly[e][0]), y1: Y(poly[e][1]),
-            x2: X(poly[e + 1][0]), y2: Y(poly[e + 1][1]),
-            stroke: strainColour(strain[e] / S.allowable_strain),
-            "stroke-width": width, "stroke-linecap": "round",
-          }));
-        }
-      }
-    }
-
-    // Ghost outlines of the pin-jointed models at the same input angle.
-    for (const key of ["rigid", "prbm"]) {
-      const frame = show[key] ? frameOf(key, i) : null;
-      if (!frame) continue;
-      const s = ST.series[key];
-      for (const body in frame.links) {
-        if (body === S.ground_body) continue;
-        view.appendChild(el("polyline", {
-          points: pts(frame.links[body]), fill: "none", stroke: colour(key),
-          "stroke-width": 1.1, "stroke-dasharray": s.dash || "none",
-          "stroke-linecap": "round",
-        }));
-      }
-      for (const body in frame.links) {
-        for (const p of frame.links[body]) {
-          view.appendChild(el("circle", {
-            cx: X(p[0]), cy: Y(p[1]), r: 1.2, fill: "none",
-            stroke: colour(key), "stroke-width": 0.8,
-          }));
-        }
-      }
-    }
-
-    // Where the tracked point is right now, per model.
-    for (const key of ["rigid", "prbm", "fea"]) {
-      const frame = show[key] ? frameOf(key, i) : null;
-      if (!frame) continue;
-      view.appendChild(el("circle", {
-        cx: X(frame.output[0]), cy: Y(frame.output[1]), r: key === "fea" ? 2.2 : 1.6,
-        fill: colour(key), stroke: ink("surface"), "stroke-width": 0.6,
-      }));
-    }
-  }
-
-
-  // --- how far apart the paths actually are ----------------------------
-  // The three predicted paths differ by tenths of a millimetre across a part
-  // 140 mm wide, so drawn on top of each other they are one curve. This is the
-  // chart that shows the difference, and it is the quantity the Phase A
-  // go/no-go is stated against.
-  const DEV = { w: 720, h: 190, l: 54, r: 14, t: 14, b: 34 };
-
-  function sizeDeviation() {
-    // Scale the viewBox to the container instead of letting the browser shrink
-    // a fixed one: an 11-unit label in a 720-wide box is under 5 px on a phone.
-    const card = document.getElementById("deviation-card");
-    const width = Math.max(320, Math.min(720, card.clientWidth - 28));
-    DEV.w = width;
-    DEV.h = Math.round(width * 0.42) + 40;
-    devSvg.setAttribute("viewBox", "0 0 " + DEV.w + " " + DEV.h);
-    devSvg.style.aspectRatio = DEV.w + " / " + DEV.h;
-  }
-  const devSvg = document.getElementById("deviation");
-  const devSeries = ["prbm", "fea", "measured"]
-    .filter((k) => has(k) && S.models[k].deviation_mm && k !== S.deviation_reference);
-
-  function devScales() {
-    const angles = S.input_angles_deg;
-    let top = 0;
-    for (const key of devSeries) {
-      for (const v of S.models[key].deviation_mm) top = Math.max(top, v);
-    }
-    top = top > 0 ? top * 1.15 : 1;
-    const a0 = Math.min(angles[0], angles[angles.length - 1]);
-    const a1 = Math.max(angles[0], angles[angles.length - 1]);
-    return {
-      top: top,
-      px: (a) => DEV.l + ((a - a0) / (a1 - a0 || 1)) * (DEV.w - DEV.l - DEV.r),
-      py: (v) => DEV.h - DEV.b - (v / top) * (DEV.h - DEV.t - DEV.b),
-    };
+    D.drawMechanism(view, S, ST, i, { show: show });
   }
 
   function drawDeviation(i) {
-    while (devSvg.firstChild) devSvg.removeChild(devSvg.firstChild);
     const card = document.getElementById("deviation-card");
-    if (!devSeries.length) { card.style.display = "none"; return; }
-    card.style.display = "";
-    sizeDeviation();
-
-    const sc = devScales();
-    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * sc.top);
-    for (const value of ticks) {
-      devSvg.appendChild(el("line", {
-        x1: DEV.l, y1: sc.py(value), x2: DEV.w - DEV.r, y2: sc.py(value),
-        stroke: value === 0 ? ink("axis") : ink("grid"), "stroke-width": 1,
-      }));
-      const label = el("text", {
-        x: DEV.l - 8, y: sc.py(value) + 4, "text-anchor": "end",
-        fill: ink("muted"), "font-size": 11,
-      });
-      label.textContent = value.toFixed(2);
-      devSvg.appendChild(label);
-    }
-    for (const key of ["prbm", "fea"]) {
-      if (devSeries.indexOf(key) === -1) continue;
-      const values = S.models[key].deviation_mm;
-      const points = values
-        .map((v, k) => sc.px(S.input_angles_deg[k]) + "," + sc.py(v)).join(" ");
-      devSvg.appendChild(el("polyline", {
-        points: points, fill: "none", stroke: colour(key), "stroke-width": 2,
-        "stroke-dasharray": ST.series[key].dash || "none",
-        "stroke-linecap": "round", "stroke-linejoin": "round",
-      }));
-      // Direct label at the right-hand end: identity never rests on colour alone.
-      const last = values.length - 1;
-      const tag = el("text", {
-        x: sc.px(S.input_angles_deg[last]) - 4, y: sc.py(values[last]) - 7,
-        "text-anchor": "end", fill: ink("secondary"), "font-size": 11,
-      });
-      tag.textContent = ST.series[key].label;
-      devSvg.appendChild(tag);
-    }
-    if (devSeries.indexOf("measured") !== -1) {
-      const m = S.models.measured;
-      const points = m.deviation_mm
-        .map((v, k) => sc.px(m.input_angles_deg[k]) + "," + sc.py(v)).join(" ");
-      devSvg.appendChild(el("polyline", {
-        points: points, fill: "none", stroke: colour("measured"),
-        "stroke-width": ST.series.measured.width, "stroke-linejoin": "round",
-      }));
-    }
-
-    // Crosshair at the state the slider is on.
-    devSvg.appendChild(el("line", {
-      x1: sc.px(S.input_angles_deg[i]), y1: DEV.t,
-      x2: sc.px(S.input_angles_deg[i]), y2: DEV.h - DEV.b,
-      stroke: ink("secondary"), "stroke-width": 1, "stroke-dasharray": "3 3",
-    }));
-    for (const key of ["prbm", "fea"]) {
-      if (devSeries.indexOf(key) === -1) continue;
-      devSvg.appendChild(el("circle", {
-        cx: sc.px(S.input_angles_deg[i]), cy: sc.py(S.models[key].deviation_mm[i]),
-        r: 4, fill: colour(key), stroke: ink("surface"), "stroke-width": 1.5,
-      }));
-    }
-
-    const xLabel = el("text", {
-      x: (DEV.l + DEV.w - DEV.r) / 2, y: DEV.h - 8, "text-anchor": "middle",
-      fill: ink("muted"), "font-size": 11,
+    devSeries = D.drawDeviation(devSvg, S, ST, i, {
+      width: devSvg.clientWidth || 520,
     });
-    xLabel.textContent = "input angle (deg)";
-    devSvg.appendChild(xLabel);
+    card.style.display = devSeries.length ? "" : "none";
   }
+
 
   // --- readouts --------------------------------------------------------
   const fmt = (v, d) => (v === null || v === undefined || !isFinite(v) ? "-" : v.toFixed(d));
@@ -602,9 +408,9 @@ _TEMPLATE = """<!DOCTYPE html>
       if (!m || !m.torque_nmm) continue;
       parts.push(stat(ST.series[key].label + " torque", fmt(m.torque_nmm[i], 1), "N&middot;mm"));
     }
-    const worst = worstStrain(i);
+    const worst = D.worstStrain(S, i);
     if (worst && worst.joint) {
-      const util = worst.value / S.allowable_strain;
+      const util = worst.utilisation;
       parts.push(stat("peak strain", (worst.value * 100).toFixed(3) + "%",
                       "joint " + worst.joint));
       parts.push(stat("of allowable", (util * 100).toFixed(0) + "%",
@@ -628,11 +434,11 @@ _TEMPLATE = """<!DOCTYPE html>
     const parts = [];
     for (const key of ["rigid", "prbm", "fea", "measured"]) {
       if (!has(key)) continue;
-      parts.push('<span><i class="swatch" style="border-top-color:' + colour(key) +
+      parts.push('<span><i class="swatch" style="border-top-color:' + D.colourOf(ST, key) +
         ";border-top-style:" + (ST.series[key].dash ? "dashed" : "solid") +
         '"></i>' + ST.series[key].label + " path</span>");
     }
-    const r = ramp();
+    const r = D.ramp(ST);
     const bar = 'linear-gradient(90deg,' + r.join(",") + ')';
     parts.push('<span><i style="width:56px;height:10px;border-radius:2px;background:' +
       bar + '"></i>flexure strain, 0 to allowable' +
