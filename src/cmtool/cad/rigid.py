@@ -528,7 +528,13 @@ def estimate_print(solid: cq.Workplane, *, density_kg_per_m3: float) -> dict[str
     moment there is one; this exists so a print sheet can say roughly how long
     to expect before anyone opens OrcaSlicer.
     """
-    volume_mm3 = float(solid.val().Volume())
+    # Sum over every shape, not ``val()``: a print-in-place part is deliberately
+    # several disjoint solids -- the levels do not touch -- so the first one is a
+    # fraction of the part.
+    shapes = [item for item in solid.vals() if isinstance(item, cq.Shape)]
+    if not shapes:
+        raise ValueError("shape has no geometry to measure")
+    volume_mm3 = float(sum(item.Volume() for item in shapes))
     #: Effective deposited volume per second, averaged over a whole print on a
     #: bed-slinger at 0.2 mm layers. A planning figure only.
     rate_mm3_per_s = 6.0
