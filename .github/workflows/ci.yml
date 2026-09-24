@@ -33,7 +33,7 @@ jobs:
       - name: Install project
         # uv run below uses --no-sync, so this step is the single place the
         # environment is defined.
-        run: uv sync --python ${{ matrix.python-version }} --extra dev --extra plot --extra data --extra cad --extra vision
+        run: uv sync --python ${{ matrix.python-version }} --extra dev --extra plot --extra data --extra cad --extra vision --extra ui
 
       - name: Test
         run: uv run --no-sync pytest --cov=cmtool --cov-report=term-missing --cov-report=xml
@@ -50,7 +50,7 @@ jobs:
           enable-cache: true
 
       - name: Install project
-        run: uv sync --python 3.12 --extra dev --extra plot --extra data --extra cad --extra vision
+        run: uv sync --python 3.12 --extra dev --extra plot --extra data --extra cad --extra vision --extra ui
 
       - name: Lint
         run: uv run --no-sync ruff check src tests
