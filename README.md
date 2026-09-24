@@ -100,7 +100,33 @@ cmtool track examples/mechanisms/fb_02_0052_mechanism.json clip.mp4 --calibratio
 cmtool uncertainty --circle out/measured_path.csv --radius-mm 40   # the go/no-go
 cmtool view examples/designs/fb_02_0052.json --html out/view.html   # one-file viewer
 cmtool figures --out docs/figures                # every README and paper figure
+cmtool export examples/designs/demo_pair.json --rigid   # the pin-jointed control part
+cmtool compare examples/designs/demo_pair.json          # rigid vs compliant, one page
+cmtool ui                                        # local design UI in a browser
 ```
+
+### The local UI
+
+```bash
+uv sync --extra ui && cmtool ui
+```
+
+One command on a clean machine, loopback only, no build step and nothing fetched from the
+network. Edit the link lengths, drag the coupler point on the drawing, press solve, and get
+the feasibility verdict with the limiting joint named, the animated mechanism, the path
+overlay, the torque curve and the per-flexure strain margin — all from the same solvers the
+CLI runs, with the placeholder caveat on the page rather than buried in a log.
+
+### The demo pair
+
+[`examples/demo_pair/`](examples/demo_pair/) holds the same four-bar built twice: once with
+print-in-place pin joints, once with flexures. Same link lengths, same coupler point, same
+base footprint, same M3 holes, and a 5 mm pen hole at the same coordinate on both — so each
+draws its own coupler path on one sheet of paper.
+[The one-page comparison](examples/demo_pair/demo_pair_comparison.md) puts them side by
+side, and leaves three cells deliberately blank with reasons; the rigid part's input torque
+is the important one, because there is no friction model here and friction is exactly what
+the compliant design removes.
 
 ## What it produces
 

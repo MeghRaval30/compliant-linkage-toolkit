@@ -1,11 +1,13 @@
-# Handover: state of the project as of 2026-09-21
+# Handover: state of the project as of 2026-09-24
 
 Written so a fresh session (or a new team member) can pick this up without reading the
 whole history. Repo: <https://github.com/MeghRaval30/compliant-linkage-toolkit>, branch
 `main`, CI green on Ubuntu + Windows × Python 3.11/3.12.
 
-**486 tests pass; lint (ruff), formatting and types (mypy) are clean.** Ten commits,
-`A0+A1` through `A6 (software half)`.
+**568 tests pass; lint (ruff), formatting and types (mypy) are clean.** Work since
+the last handover is on branch `MeghRaval/cmtool-continuation-47cf9d`, open as
+[PR #1](https://github.com/MeghRaval30/compliant-linkage-toolkit/pull/1) and **not yet
+merged** — merging it once CI is green is the first thing to do.
 
 ---
 
@@ -38,7 +40,8 @@ strategies are plug-in registries.
 | A3 PRBM | done | quasi-static solver, two PRBM models, mechanism CAD |
 | A4 beam FEA | done | co-rotational beam FEA, PRBM variant study, torque rig |
 | A5 camera | done | ArUco tracking, calibration, uncertainty / go-no-go |
-| A6 software | done | HTML viewer, figure scripts, path-distance metrics |
+| A6 software | done | HTML viewer, figure scripts, path-distance metrics, local UI |
+| A6 demo pair | done | rigid pin-jointed control part, comparison sheet |
 | **A6 physical** | **not started** | **print, measure, film, demo video** |
 
 **Everything remaining in Phase A is physical.** No software work blocks it: the figures
@@ -383,6 +386,68 @@ The go/no-go signal, 0.46 mm, is the **PRBM-vs-FEA** disagreement. Worth stating
 it that the conversion artefact above is of the same order, so a take that resolves one
 resolves the other -- and that the 0.46 mm figure itself depends on the placeholder flexure
 thickness, since stiffness goes as `t^3`. It moves if the coupon says 0.4 mm prints.
+
+---
+
+## 10c. The demo pair and the local UI
+
+Both landed on 2026-09-24. Neither changes any physics; they exist so the work can be
+shown and driven.
+
+### `examples/demo_pair/` — the same four-bar, twice
+
+`demo_pair` is ground 40, input 32, coupler 44, output 36, coupler point (22, 38), arc
+79.0—101.0 deg. Picked from a sweep for a compact envelope and a worst-case transmission
+angle of 70 deg.
+
+| | file | size | estimated |
+|---|---|---|---|
+| rigid, print-in-place pins | `demo_pair_rigid.stl` | 60 x 65 x 11 mm | 10.5 g, 23 min |
+| compliant | `demo_pair.stl` | 60 x 86 x 7 mm | 24.8 g, 56 min |
+
+Both carry the **same base footprint, the same M3 hole pattern and a 5 mm pen hole at the
+same coupler coordinate**, asserted equal by test. One fixture position serves both, and
+each draws its own coupler path on the same sheet of paper.
+
+`cmtool export --rigid` builds the control part. Three things about it:
+
+- **Print-in-place**: three levels stacked in Z — base plate, the two grounded links,
+  then the coupler — each pin rising from the level below and capped above the one it
+  passes through. `--joint-style bolt` is the fallback that cannot fail to print.
+- **The clearance is a design choice, not a measurement.** 0.35 mm radial, stated as such
+  on the print sheet and in the layout JSON. Reprint at +0.1 mm if the joints seize.
+- **The exporter refuses to ship a fused part.** The ground pins' caps sit at exactly the
+  coupler's height, so if the coupler ever swings over one they print as a single solid:
+  a part that looks right, does not move, and costs an hour to discover. The linkage is
+  swept and the worst coupler-to-cap clearance reported; a collision is a hard error. The
+  demo pair clears by 31.9 mm against 9.2 mm needed.
+
+`cmtool compare` writes `demo_pair_comparison.md`, the one-page sheet for the bench. Three
+cells are deliberately blank with reasons, the important one being the rigid part's input
+torque: there is no friction model here, and friction is the thing the compliant design
+removes, so a number there would claim the result the demo exists to show.
+
+### `cmtool ui` — the local design UI
+
+`uv sync --extra ui && cmtool ui` on a clean machine. Loopback only, no network, no build
+step; the page and its script ship inside the package. Edit the links, the coupler point
+(draggable on the drawing), the arc and the flexures; solve; get the feasibility verdict
+with the limiting joint named, the animated mechanism, the path overlay and its deviation
+panel, the torque curve and the per-flexure strain margin. Presets for the three pilots
+and the demo pair. Downloads for STL, STEP, print sheet and design JSON.
+
+`cmtool/ui/model.py` is the whole of the logic and imports nothing web-shaped, so the
+solve path is testable without a server. A test asserts the drawn rigid path equals
+`simulate(...).path()` exactly — the UI must never grow a second implementation of the
+toolkit. A beam FEA sweep runs on a worker thread and the page polls, and results are
+cached on the parameter hash.
+
+### One implementation of the drawing
+
+`src/cmtool/viz/static/scene_draw.js` is the only place that knows how a `ViewerScene`
+looks. The UI serves it; `cmtool view` **inlines** it, so the standalone viewer still
+fetches nothing and is still asserted self-contained by test. A copy of the drawing code
+had started to exist inside the viewer's template; that is gone.
 
 ---
 
