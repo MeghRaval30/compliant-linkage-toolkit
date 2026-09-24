@@ -909,6 +909,107 @@ def view_cmd(
         console.print(f"wrote {json_out}")
 
 
+@app.command(name="compare")
+def compare_cmd(
+    linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/compare"),
+    steps: Annotated[int, typer.Option(help="States across the input arc")] = 31,
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
+    clearance_mm: Annotated[float, typer.Option(help="Rigid pin clearance")] = 0.35,
+    lever_length_mm: Annotated[
+        float, typer.Option(help="Compliant input lever; match what you exported")
+    ] = 45.0,
+) -> None:
+    """Write the one-page sheet comparing the pin-jointed and compliant parts.
+
+    Part counts, assembly, joints, predicted torque, path deviation and strain
+    margin, side by side. Cells that depend on measurements nobody has taken are
+    left blank and say why -- filling them in would claim the comparison the demo
+    exists to make.
+    """
+    import warnings
+
+    from cmtool.api import convert as convert_api
+    from cmtool.cad.export import bounding_box_mm
+    from cmtool.cad.mechanism import MechanismCadSpec, build_mechanism
+    from cmtool.cad.rigid import RigidCadSpec, build_rigid_mechanism, estimate_print
+    from cmtool.materials import Material, Printer
+    from cmtool.metrics.comparison import build_comparison, write_comparison
+    from cmtool.viz.scene import build_scene
+
+    linkage = Linkage.from_json(linkage_json)
+    if linkage.input_range_deg is None:
+        console.print("[red]this linkage has no input arc; set input_range_deg first[/]")
+        raise typer.Exit(code=2)
+
+    # Shared base geometry: one fixture position has to serve both parts, so the
+    # two specs are given the same plate rather than each keeping its default.
+    base_depth, base_margin, bolt_inset = 22.0, 10.0, 7.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mech = convert_api(
+            linkage,
+            material=material,
+            printer=printer,
+            input_range_deg=linkage.input_range_deg,
+        )
+        scene = build_scene(mech, n_steps=steps)
+
+        rigid_solid, rigid_layout = build_rigid_mechanism(
+            linkage,
+            spec=RigidCadSpec(
+                clearance_mm=clearance_mm,
+                base_depth_mm=base_depth,
+                base_margin_mm=base_margin,
+                bolt_inset_mm=bolt_inset,
+            ),
+        )
+        printer_cfg = Printer.load(printer)
+        compliant_solid, _ = build_mechanism(
+            mech,
+            spec=MechanismCadSpec(
+                link_width_mm=10.0,
+                pen_hole_diameter_mm=5.0,
+                lever_length_mm=lever_length_mm,
+                base_depth_mm=base_depth,
+                base_margin_mm=base_margin,
+                bolt_inset_mm=bolt_inset,
+            ),
+            printer=printer_cfg,
+        )
+        density = Material.load(material).density_kg_per_m3(Provenance())
+
+    sheet = build_comparison(
+        scene,
+        mech,
+        rigid_layout=rigid_layout,
+        rigid_estimate=estimate_print(rigid_solid, density_kg_per_m3=density),
+        compliant_estimate=estimate_print(compliant_solid, density_kg_per_m3=density),
+        rigid_extent_mm=bounding_box_mm(rigid_solid),
+        compliant_extent_mm=bounding_box_mm(compliant_solid),
+        clearance_mm=clearance_mm,
+    )
+    path = write_comparison(sheet, Path(out) / f"{linkage.name}_comparison.md")
+
+    table = Table(title=f"{linkage.name}: rigid vs compliant", show_header=True)
+    table.add_column("")
+    table.add_column("rigid")
+    table.add_column("compliant")
+    for row in sheet.rows:
+        table.add_row(
+            row.label.replace("&middot;", "."),
+            row.rigid.replace("&plusmn;", "+/-"),
+            row.compliant.replace("&plusmn;", "+/-"),
+        )
+    console.print(table)
+    console.print(f"wrote {path}")
+    for item in sheet.unmeasured:
+        console.print(f"[dim]blank: {item.split('.')[0].replace('**', '')}[/]")
+    if sheet.caveat:
+        console.print(f"[yellow]{sheet.caveat}[/]")
+
+
 @app.command(name="ui")
 def ui_cmd(
     host: Annotated[str, typer.Option(help="Interface to bind; loopback only by default")] = (

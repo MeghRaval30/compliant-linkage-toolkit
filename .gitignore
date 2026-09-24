@@ -15,6 +15,7 @@ out/
 # repo means the team can print the coupons without running Python first.
 !examples/coupons/*.stl
 !examples/mechanisms/*.stl
+!examples/demo_pair/*.stl
 !examples/markers/*.png
 build/
 dist/
