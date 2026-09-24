@@ -27,7 +27,7 @@ from rich.table import Table
 from cmtool import __version__
 from cmtool.api import available_solvers, simulate
 from cmtool.core.graph import Linkage
-from cmtool.core.provenance import git_commit
+from cmtool.core.provenance import Provenance, git_commit
 
 app = typer.Typer(
     add_completion=False,
@@ -441,6 +441,151 @@ def generate() -> None:
     _not_yet("B", "dataset sample generation")
 
 
+def _export_rigid(
+    linkage_json: Path,
+    *,
+    out: Path,
+    material: str,
+    printer: str,
+    joint_style: str,
+    clearance_mm: float,
+    pen_hole_mm: float,
+    link_width_mm: float,
+    base_depth_mm: float,
+    base_margin_mm: float,
+    bolt_inset_mm: float,
+) -> None:
+    """Export the pin-jointed control part, its print sheet and its layout."""
+    from cmtool.cad import check_printability, export_solid, write_print_sheet
+    from cmtool.cad.rigid import RigidCadSpec, build_rigid_mechanism, estimate_print
+    from cmtool.materials import Material, Printer
+
+    linkage = Linkage.from_json(linkage_json)
+    printer_cfg = Printer.load(printer)
+    material_cfg = Material.load(material)
+
+    spec = RigidCadSpec(
+        joint_style=joint_style,
+        clearance_mm=clearance_mm,
+        pen_hole_diameter_mm=pen_hole_mm,
+        link_width_mm=link_width_mm,
+        base_depth_mm=base_depth_mm,
+        base_margin_mm=base_margin_mm,
+        bolt_inset_mm=bolt_inset_mm,
+    )
+    try:
+        solid, layout = build_rigid_mechanism(linkage, spec=spec)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1) from exc
+
+    collisions = [w for w in layout.warnings if w.startswith("COLLISION")]
+    if collisions:
+        for note in collisions:
+            console.print(f"[red]{note}[/]")
+        raise typer.Exit(code=1)
+
+    # The thinnest *solid* feature, not the clearance: a gap is not a wall, and
+    # feeding the clearance in here reports the part as unprintable for having a
+    # well-made joint.
+    thinnest = min(
+        spec.cap_thickness_mm,
+        spec.link_width_mm / 2.0 - (spec.pin_diameter_mm / 2.0 + spec.clearance_mm),
+    )
+    check = check_printability(solid, printer_cfg, min_feature_mm=thinnest)
+    stem = f"{linkage.name}_rigid"
+    paths = export_solid(solid, out, stem)
+
+    provenance = Provenance(notes={"part": stem})
+    density = material_cfg.density_kg_per_m3(provenance)
+    estimate = estimate_print(solid, density_kg_per_m3=density)
+
+    details: dict[str, object] = {
+        "joint style": joint_style,
+        "pin clearance (mm, radial)": clearance_mm,
+        "thinnest solid wall (mm)": round(thinnest, 2),
+        "pin diameter (mm)": spec.pin_diameter_mm,
+        "link width x thickness (mm)": f"{spec.link_width_mm} x {spec.link_thickness_mm}",
+        "stacked level heights (mm)": {k: round(v, 2) for k, v in layout.level_z_mm.items()},
+        "moving joints": layout.n_moving_joints,
+        "printed bodies": layout.n_printed_bodies,
+        "fasteners needed": layout.n_fasteners,
+        "pen hole": (
+            f"{pen_hole_mm:.1f} mm dia at "
+            f"({layout.pen_hole_mm[0]:.1f}, {layout.pen_hole_mm[1]:.1f}), "
+            f"top face z = {layout.pen_hole_z_mm + spec.link_thickness_mm:.1f} mm"
+            if layout.pen_hole_mm
+            else "none"
+        ),
+        "bolt holes (mm)": [[round(x, 2), round(y, 2)] for x, y in layout.bolt_holes_mm],
+        "ESTIMATED mass (g)": round(estimate["mass_g"], 1),
+        "ESTIMATED print time (min)": round(estimate["estimated_minutes"]),
+        "estimate basis": (
+            f"solid volume {estimate['volume_mm3']:.0f} mm^3 at "
+            f"{estimate['assumed_rate_mm3_per_s']:.0f} mm^3/s -- a planning figure, "
+            "NOT a measurement; use the slicer's number once you have it"
+        ),
+    }
+    instructions = [
+        "Print flat on the bed exactly as exported. No supports, no raft, no brim "
+        "unless the base plate lifts.",
+        "OrcaSlicer: 0.2 mm layers, 0.4 mm nozzle, Arachne wall generator, 3 walls, "
+        "20% infill. Arachne matters here for the same reason as everywhere else in "
+        "this project.",
+        "Do NOT enable ironing or elephant-foot compensation on the first print: both "
+        "change the effective clearance at the joints.",
+        "Let the part cool to room temperature before flexing anything.",
+        "Free the joints by twisting each link gently back and forth. If a joint will "
+        "not free off, reprint with --clearance-mm 0.45; if it rattles, 0.25.",
+        "Bolt the base to the fixture with M3 before driving the input link.",
+        "For the drawing: put paper under the coupler, drop a fineliner through the pen "
+        "hole so its tip rests on the paper, and walk the input link slowly from one end "
+        "of its arc to the other.",
+        "Draw the compliant part's path on the SAME sheet, with the base in the same "
+        "place, so the two curves can be compared directly.",
+    ]
+    sheet = write_print_sheet(
+        Path(out) / f"{stem}_print_sheet.md",
+        title=f"rigid pin-jointed four-bar {linkage.name}",
+        printer=printer_cfg,
+        material=material_cfg,
+        purpose=(
+            "The control half of the demo pair: the same four-bar built the way it "
+            "would have been built before compliant mechanisms. Printed alongside the "
+            "compliant part, it is what makes the no-assembly, no-friction argument "
+            "visible rather than asserted."
+        ),
+        check=check,
+        details=details,
+        instructions=instructions,
+    )
+
+    report = {
+        "linkage": linkage.to_dict(),
+        "layout": layout.to_dict(),
+        "printability": check.to_dict(),
+        "estimate": estimate,
+        "provenance": provenance.to_dict(),
+    }
+    report_path = Path(out) / f"{stem}.json"
+    report_path.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
+
+    size = check.bounding_box_mm
+    status = "[green]OK[/]" if check.ok else "[red]DOES NOT FIT[/]"
+    console.print(
+        f"{stem}: {status}  {size[0]:.0f} x {size[1]:.0f} x {size[2]:.0f} mm, "
+        f"~{estimate['mass_g']:.0f} g, ~{estimate['estimated_minutes']:.0f} min (estimated) "
+        f"-> {paths['stl'].name}, {paths['step'].name}, {sheet.name}, {report_path.name}"
+    )
+    for note in layout.warnings:
+        console.print(f"    [yellow]{note}[/]")
+    for note in check.notes:
+        console.print(f"    [yellow]{note}[/]")
+    caveat = provenance.caveat()
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
+
+
 @app.command()
 def export(
     linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
@@ -458,8 +603,54 @@ def export(
     ] = 22.0,
     link_width_mm: Annotated[float, typer.Option(help="Rigid link width")] = 8.0,
     lever_length_mm: Annotated[float, typer.Option(help="Input lever length")] = 45.0,
+    rigid: Annotated[
+        bool,
+        typer.Option(
+            "--rigid/--compliant",
+            help="Export the pin-jointed control part instead of the compliant one",
+        ),
+    ] = False,
+    joint_style: Annotated[
+        str, typer.Option(help="Rigid only: print_in_place or bolt")
+    ] = "print_in_place",
+    clearance_mm: Annotated[float, typer.Option(help="Rigid only: radial pin clearance")] = 0.35,
+    pen_hole_mm: Annotated[
+        float,
+        typer.Option(help="Through-hole at the coupler point so the part draws its path"),
+    ] = 5.0,
+    base_depth_mm: Annotated[
+        float, typer.Option(help="Base plate depth; match it across a demo pair")
+    ] = 38.0,
+    base_margin_mm: Annotated[
+        float, typer.Option(help="Base plate overhang past each ground pivot")
+    ] = 14.0,
+    bolt_inset_mm: Annotated[
+        float, typer.Option(help="Mounting hole inset from the base plate corners")
+    ] = 8.0,
 ) -> None:
-    """Export the printable monolithic part for a compliant mechanism."""
+    """Export the printable part for a mechanism, compliant or pin-jointed.
+
+    ``--rigid`` gives the control: the same four-bar with pin joints, the same
+    link lengths, coupler point, base footprint and mounting holes. Both halves
+    carry a pen hole at the coupler point, so each draws its own coupler path on
+    the same sheet of paper.
+    """
+    if rigid:
+        _export_rigid(
+            linkage_json,
+            out=out,
+            material=material,
+            printer=printer,
+            joint_style=joint_style,
+            clearance_mm=clearance_mm,
+            pen_hole_mm=pen_hole_mm,
+            link_width_mm=max(link_width_mm, 10.0),
+            base_depth_mm=base_depth_mm,
+            base_margin_mm=base_margin_mm,
+            bolt_inset_mm=bolt_inset_mm,
+        )
+        return
+
     from cmtool.api import convert as convert_api
     from cmtool.cad import check_printability, export_solid, write_print_sheet
     from cmtool.cad.mechanism import MechanismCadSpec, build_mechanism
@@ -492,7 +683,14 @@ def export(
 
     printer_cfg = Printer.load(printer)
     material_cfg = Material.load(material)
-    spec = MechanismCadSpec(link_width_mm=link_width_mm, lever_length_mm=lever_length_mm)
+    spec = MechanismCadSpec(
+        link_width_mm=link_width_mm,
+        lever_length_mm=lever_length_mm,
+        pen_hole_diameter_mm=pen_hole_mm,
+        base_depth_mm=base_depth_mm,
+        base_margin_mm=base_margin_mm,
+        bolt_inset_mm=bolt_inset_mm,
+    )
     solid, layout = build_mechanism(mech, spec=spec, printer=printer_cfg)
 
     thinnest = min(s.geometry.thickness_mm for s in mech.sizing.values())
@@ -511,6 +709,12 @@ def export(
         "fiducial pad spacing (mm)": round(layout.fiducial_spacing_mm, 2),
         "force hole radius from input pivot (mm)": round(layout.force_radius_mm, 2),
         "marker pad plane z (mm)": layout.pad_plane_z_mm,
+        "pen hole at coupler point (mm)": (
+            f"{pen_hole_mm:.1f} dia at "
+            f"({layout.coupler_pad_mm[0]:.1f}, {layout.coupler_pad_mm[1]:.1f})"
+            if pen_hole_mm > 0.0 and layout.coupler_pad_mm
+            else "none"
+        ),
         "bolt holes (mm)": [[round(x, 2), round(y, 2)] for x, y in layout.bolt_holes_mm],
     }
     instructions = [

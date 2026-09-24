@@ -78,6 +78,11 @@ class MechanismCadSpec:
     force_point_fraction: float = 0.8
     fillet_radius_mm: float = 0.0
     part_thickness_mm: float | None = None
+    #: Through-hole at the coupler point so the part can draw its own path on
+    #: paper. Zero leaves the marker pad solid. The rigid control part carries
+    #: the same hole at the same coordinate, which is what lets the two curves
+    #: be compared on one sheet.
+    pen_hole_diameter_mm: float = 0.0
 
     def resolved_thickness_mm(
         self, printer: Printer, provenance: Provenance | None = None
@@ -340,6 +345,15 @@ def build_mechanism(
                 solid = solid.union(_bar(nearest, point, spec.link_width_mm * 0.7, depth))
         layout.coupler_pad_mm = (float(point[0]), float(point[1]))
         solid = solid.union(_pad(point, spec.pad_size_mm * 0.6, depth, spec.pad_thickness_mm))
+        if spec.pen_hole_diameter_mm > 0.0:
+            # Through the pad and the part together, so a pen dropped in reaches
+            # the paper. The ArUco pad is still usable around it.
+            solid = solid.cut(
+                cq.Workplane("XY")
+                .moveTo(float(point[0]), float(point[1]))
+                .circle(spec.pen_hole_diameter_mm / 2.0)
+                .extrude(depth + spec.pad_thickness_mm + 1.0)
+            )
 
     return solid, layout
 

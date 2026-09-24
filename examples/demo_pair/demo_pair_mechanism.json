@@ -1,0 +1,341 @@
+{
+  "conversion": {
+    "name": "demo_pair",
+    "flexure_type": "small_length_pivot",
+    "material": "PLA",
+    "printer": "kobra2_neo",
+    "placement": "pivot_matched",
+    "unstressed_at": "mid_arc",
+    "input_range_deg": [
+      79.013,
+      100.987
+    ],
+    "reference_input_deg": 90.0,
+    "feasibility": {
+      "feasible": true,
+      "binding_joint": "A",
+      "max_utilisation": 0.33707693832999075,
+      "allowable_strain": 0.01,
+      "strain_safety_factor": 1.5,
+      "max_length_fraction": 0.8,
+      "all_small_length": false,
+      "prbm_models": {
+        "A": "long_segment_end_moment",
+        "B": "long_segment_end_moment",
+        "C": "long_segment_end_moment",
+        "D": "long_segment_end_moment"
+      },
+      "joints": {
+        "A": {
+          "joint": "A",
+          "type": "small_length_pivot",
+          "t_mm": 0.6,
+          "length_mm": 8.629169621247764,
+          "width_mm": 6.0,
+          "max_bend_deg": 10.986999999999998,
+          "excursion_deg": 21.973999999999997,
+          "peak_strain": 0.006666666666666666,
+          "strain_model": "leaf_uniform_bending",
+          "min_length_strain_mm": 8.629169621247764,
+          "max_length_geometric_mm": 25.6,
+          "stiffness_nmm_per_rad": 66.42576576413575,
+          "utilisation": 0.33707693832999075,
+          "feasible": true,
+          "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 2.2901816174791563,
+          "prbm": {
+            "length_ratio": 0.2696615506639926,
+            "small_length_limit": 0.1,
+            "is_small_length": false,
+            "small_length_utilisation": 2.696615506639926,
+            "model": "long_segment_end_moment",
+            "bend_angle_deg": 10.986999999999998,
+            "slenderness": 14.381949368746273,
+            "max_angle_deg": 64.3,
+            "within_model_angle": true,
+            "near_model_boundary": false,
+            "model_verified": true
+          },
+          "prbm_notes": [
+            "length ratio 0.270 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM"
+          ]
+        },
+        "B": {
+          "joint": "B",
+          "type": "small_length_pivot",
+          "t_mm": 0.6,
+          "length_mm": 7.992389314947759,
+          "width_mm": 6.0,
+          "max_bend_deg": 10.176226132710264,
+          "excursion_deg": 20.22669455547532,
+          "peak_strain": 0.006666666666666667,
+          "strain_model": "leaf_uniform_bending",
+          "min_length_strain_mm": 7.992389314947759,
+          "max_length_geometric_mm": 25.6,
+          "stiffness_nmm_per_rad": 71.71812801060311,
+          "utilisation": 0.3122027076151468,
+          "feasible": true,
+          "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 2.121180124187135,
+          "prbm": {
+            "length_ratio": 0.24976216609211746,
+            "small_length_limit": 0.1,
+            "is_small_length": false,
+            "small_length_utilisation": 2.4976216609211743,
+            "model": "long_segment_end_moment",
+            "bend_angle_deg": 10.176226132710264,
+            "slenderness": 13.320648858246265,
+            "max_angle_deg": 64.3,
+            "within_model_angle": true,
+            "near_model_boundary": false,
+            "model_verified": true
+          },
+          "prbm_notes": [
+            "length ratio 0.250 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM"
+          ]
+        },
+        "C": {
+          "joint": "C",
+          "type": "small_length_pivot",
+          "t_mm": 0.6,
+          "length_mm": 7.204979977906776,
+          "width_mm": 6.0,
+          "max_bend_deg": 9.173665426895987,
+          "excursion_deg": 18.065864054344996,
+          "peak_strain": 0.006666666666666666,
+          "strain_model": "leaf_uniform_bending",
+          "min_length_strain_mm": 7.204979977906776,
+          "max_length_geometric_mm": 28.799999999999997,
+          "stiffness_nmm_per_rad": 79.55597402874788,
+          "utilisation": 0.2501729158995408,
+          "feasible": true,
+          "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 1.9122016861364581,
+          "prbm": {
+            "length_ratio": 0.2001383327196327,
+            "small_length_limit": 0.1,
+            "is_small_length": false,
+            "small_length_utilisation": 2.0013833271963266,
+            "model": "long_segment_end_moment",
+            "bend_angle_deg": 9.173665426895987,
+            "slenderness": 12.00829996317796,
+            "max_angle_deg": 64.3,
+            "within_model_angle": true,
+            "near_model_boundary": false,
+            "model_verified": true
+          },
+          "prbm_notes": [
+            "length ratio 0.200 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM"
+          ]
+        },
+        "D": {
+          "joint": "D",
+          "type": "small_length_pivot",
+          "t_mm": 0.6,
+          "length_mm": 7.84176028420678,
+          "width_mm": 6.0,
+          "max_bend_deg": 9.984439294185721,
+          "excursion_deg": 19.813169498869673,
+          "peak_strain": 0.006666666666666667,
+          "strain_model": "leaf_uniform_bending",
+          "min_length_strain_mm": 7.84176028420678,
+          "max_length_geometric_mm": 28.799999999999997,
+          "stiffness_nmm_per_rad": 73.09573096163331,
+          "utilisation": 0.27228334320162434,
+          "feasible": true,
+          "limit_reason": null,
+          "pivot_fraction": 0.26539999999999997,
+          "pivot_from_root_mm": 2.081203179428479,
+          "prbm": {
+            "length_ratio": 0.21782667456129948,
+            "small_length_limit": 0.1,
+            "is_small_length": false,
+            "small_length_utilisation": 2.1782667456129947,
+            "model": "long_segment_end_moment",
+            "bend_angle_deg": 9.984439294185721,
+            "slenderness": 13.069600473677967,
+            "max_angle_deg": 64.3,
+            "within_model_angle": true,
+            "near_model_boundary": false,
+            "model_verified": true
+          },
+          "prbm_notes": [
+            "length ratio 0.218 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM"
+          ]
+        }
+      },
+      "reasons": [],
+      "prbm_notes": [
+        "A: length ratio 0.270 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+        "B: length ratio 0.250 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+        "C: length ratio 0.200 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM",
+        "D: length ratio 0.218 exceeds the small-length limit 0.1; using the 'long_segment_end_moment' model, so the beam FEA is the reference here rather than the PRBM"
+      ]
+    },
+    "is_physical": false,
+    "placeholders_used": [
+      "kobra2_neo.design_rules.min_flexure_thickness_mm",
+      "PLA.properties.allowable_strain",
+      "PLA.properties.youngs_modulus_MPa"
+    ],
+    "diagnostics": {
+      "n_steps": 61,
+      "reference_index": 30,
+      "thickness_mm": 0.6,
+      "width_mm": 6.0,
+      "youngs_modulus_MPa": 3500.0,
+      "grashof": "change_point",
+      "transmission_angle_min_deg": 69.76152729754433,
+      "branch_flip": false
+    }
+  },
+  "layout": {
+    "flexure_axis": {
+      "A": [
+        6.123233995736766e-17,
+        1.0
+      ],
+      "B": [
+        -6.123233995736766e-17,
+        -1.0
+      ],
+      "C": [
+        -0.10655643583701353,
+        -0.9943066559073777
+      ],
+      "D": [
+        0.10655643583701353,
+        0.9943066559073777
+      ]
+    },
+    "attachment_points": {
+      "ground": {
+        "A": [
+          -3.8815106843243474e-16,
+          -6.338988003768607
+        ],
+        "D": [
+          39.38617556647924,
+          -5.727760271015597
+        ]
+      },
+      "input": {
+        "A": [
+          1.4023317936559785e-16,
+          2.2901816174791563
+        ],
+        "B": [
+          1.829550056160727e-15,
+          29.878819875812866
+        ]
+      },
+      "coupler": {
+        "B": [
+          2.318942755765241e-15,
+          37.871209190760624
+        ],
+        "C": [
+          44.40001128057905,
+          41.0576842964149
+        ]
+      },
+      "output": {
+        "C": [
+          43.632274293856256,
+          33.8937247487028
+        ],
+        "D": [
+          40.22176559305256,
+          2.069354173601333
+        ]
+      }
+    },
+    "bolt_holes_mm": [
+      [
+        -3.0,
+        -7.0
+      ],
+      [
+        -3.0,
+        -15.0
+      ],
+      [
+        43.0,
+        -7.0
+      ],
+      [
+        43.0,
+        -15.0
+      ]
+    ],
+    "fiducial_pads_mm": [
+      [
+        7.0,
+        -16.5
+      ],
+      [
+        33.0,
+        -16.5
+      ]
+    ],
+    "fiducial_spacing_mm": 26.0,
+    "lever_pad_mm": [
+      -1.83697019872103e-15,
+      -30.0
+    ],
+    "force_point_mm": [
+      -1.4695761589768238e-15,
+      -24.0
+    ],
+    "force_radius_mm": 24.0,
+    "coupler_pad_mm": [
+      22.0,
+      38.0
+    ],
+    "pad_plane_z_mm": 7.0,
+    "lever_clears_base": false,
+    "warnings": [
+      "the input lever sweeps over the base plate: shorten lever_length_mm, or drive the mechanism from the other side"
+    ]
+  },
+  "printability": {
+    "ok": true,
+    "fits_envelope": true,
+    "bounding_box_mm": [
+      60.0,
+      86.0,
+      7.0
+    ],
+    "envelope_mm": [
+      180.0,
+      180.0
+    ],
+    "min_feature_mm": 0.6,
+    "min_printable_mm": 0.6,
+    "below_minimum": false,
+    "below_minimum_allowed": false,
+    "notes": []
+  },
+  "provenance": {
+    "config_hash": "ecf9b14c9554fa9543f570cafc5e0ce60e1c6c6e1d2acf98941edfc24d111968",
+    "code_commit": "56698209ca585a29e55be3ed2534fefc9ae8f219-dirty",
+    "version": "0.1.0.dev0",
+    "seed": null,
+    "created_utc": "2026-09-24T12:01:58+00:00",
+    "placeholders_used": [
+      "kobra2_neo.design_rules.min_flexure_thickness_mm",
+      "PLA.properties.allowable_strain",
+      "PLA.properties.youngs_modulus_MPa"
+    ],
+    "is_physical": false,
+    "notes": {
+      "strategy": "naive",
+      "placement": "pivot_matched",
+      "unstressed_at": "mid_arc",
+      "strain_safety_factor": 1.5
+    }
+  }
+}
