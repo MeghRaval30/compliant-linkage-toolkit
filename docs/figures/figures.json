@@ -1,0 +1,187 @@
+{
+  "generated": [
+    {
+      "name": "path_overlay",
+      "produced": true,
+      "path": "docs\\figures\\path_overlay.png",
+      "reason": null,
+      "missing": [
+        "measured"
+      ],
+      "inputs": {
+        "design": "fb_02_0052",
+        "states": 41
+      }
+    },
+    {
+      "name": "torque_curves",
+      "produced": true,
+      "path": "docs\\figures\\torque_curves.png",
+      "reason": null,
+      "missing": [
+        "measured"
+      ],
+      "inputs": {
+        "design": "fb_02_0052",
+        "n_readings": 0
+      }
+    },
+    {
+      "name": "strain",
+      "produced": true,
+      "path": "docs\\figures\\strain.png",
+      "reason": null,
+      "missing": [
+        "measured_allowable_strain"
+      ],
+      "inputs": {
+        "design": "fb_02_0052",
+        "allowable_strain": 0.01,
+        "peaks": {
+          "A": 0.7376673842992777,
+          "B": 0.7110048311923504,
+          "C": 0.7304984873308094,
+          "D": 0.7435426288856573
+        }
+      }
+    },
+    {
+      "name": "feasibility",
+      "produced": true,
+      "path": "docs\\figures\\feasibility.png",
+      "reason": null,
+      "missing": [],
+      "inputs": {
+        "designs": [
+          "fb_02_0052",
+          "fb_02_0090",
+          "fb_02_0203"
+        ]
+      }
+    },
+    {
+      "name": "design_rule",
+      "produced": true,
+      "path": "docs\\figures\\design_rule.png",
+      "reason": null,
+      "missing": [
+        "measured_allowable_strain"
+      ],
+      "inputs": {
+        "allowable_strain": 0.01,
+        "designs": [
+          {
+            "design": "fb_02_0052",
+            "joint": "A",
+            "link_mm": 67.2990062883991,
+            "excursion_deg": 21.710449218750018
+          },
+          {
+            "design": "fb_02_0090",
+            "joint": "C",
+            "link_mm": 64.6208370952595,
+            "excursion_deg": 21.946609847401607
+          },
+          {
+            "design": "fb_02_0203",
+            "joint": "D",
+            "link_mm": 67.63085563418792,
+            "excursion_deg": 21.97074440604121
+          }
+        ]
+      }
+    },
+    {
+      "name": "conversion_artefact",
+      "produced": true,
+      "path": "docs\\figures\\conversion_artefact.png",
+      "reason": null,
+      "missing": [],
+      "inputs": {
+        "design": "fb_02_0052",
+        "mean_mm": 0.5625433208890774,
+        "max_mm": 1.1664536722441379,
+        "flexure_length_mm": [
+          7.47586115336091,
+          8.740696005604892
+        ]
+      }
+    },
+    {
+      "name": "uncertainty",
+      "produced": false,
+      "path": null,
+      "reason": "no tracking uncertainty report: run 'cmtool uncertainty --static/--circle --json out/uncertainty.json' on real footage and pass it with --uncertainty",
+      "missing": [
+        "measured"
+      ],
+      "inputs": {}
+    },
+    {
+      "name": "prbm_variant",
+      "produced": true,
+      "path": "docs\\figures\\prbm_variant.png",
+      "reason": null,
+      "missing": [],
+      "inputs": {
+        "load_ratios": [
+          0.0,
+          0.05,
+          0.1,
+          0.2,
+          0.5,
+          1.0,
+          2.0,
+          5.0
+        ],
+        "joint_load_ratio": 0.1,
+        "fitted_at_joint": {
+          "load_ratio": 0.1,
+          "gamma": 0.7541990779520327,
+          "pivot_fraction": 0.24580092204796733,
+          "stiffness_multiple_of_ei_over_l": 1.523275998592464,
+          "fit_rms_over_length": 3.7350427654837534e-05
+        },
+        "recommended": "end_moment",
+        "stiffness_errors": {
+          "end_moment": 0.004513954528803428,
+          "end_force": 0.4787208635082236
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "config_hash": "ecf9b14c9554fa9543f570cafc5e0ce60e1c6c6e1d2acf98941edfc24d111968",
+    "code_commit": "a28004045a231d392cc4665339a8d1f1fa2af001-dirty",
+    "version": "0.1.0.dev0",
+    "seed": null,
+    "created_utc": "2026-09-20T19:25:45+00:00",
+    "placeholders_used": [
+      "kobra2_neo.design_rules.min_flexure_thickness_mm",
+      "PLA.properties.allowable_strain",
+      "PLA.properties.youngs_modulus_MPa"
+    ],
+    "is_physical": false,
+    "notes": {
+      "figures": [
+        "fb_02_0052",
+        "fb_02_0090",
+        "fb_02_0203"
+      ]
+    }
+  },
+  "theme": "light",
+  "column": "single",
+  "figure_width_in": 3.4,
+  "formats": [
+    "png"
+  ],
+  "designs": [
+    "fb_02_0052",
+    "fb_02_0090",
+    "fb_02_0203"
+  ],
+  "measured_path": null,
+  "n_torque_readings": 0,
+  "has_uncertainty_report": false
+}

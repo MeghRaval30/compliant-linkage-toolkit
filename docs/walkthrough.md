@@ -27,6 +27,7 @@ correction can close the difference.
 | PRBM | **working** | Input torque and strain, fast |
 | 2D beam FEA | **working** | Path, torque and strain without the PRBM's assumptions |
 | Camera tracking | **working** | The measured path, and its uncertainty |
+| Viewer and figures | **working** | The picture of all of it, in one command |
 | 3D solid FEA | Phase C | Checks whether the 2D assumption held |
 
 ---
@@ -318,6 +319,41 @@ equations. What it does cause is out-of-plane sag, and that is a *measurement* e
 mechanism error: a marker lifted out of the calibration plane appears displaced sideways.
 The part is designed ~100× stiffer out of plane than in it (`I_out/I_in = (w/t)²`), which
 is why the 6 mm part thickness is a design rule and not an afterthought.
+
+---
+
+## 6b. Drawing it — the viewer and the figures
+
+**What it solves.** Everything above produces numbers. A supervisor meeting, a print
+session at the machine, and a README all need a picture instead.
+
+**Two outputs, one geometry.** A `ViewerScene` holds where every link and flexure sits at
+every step of the arc, the coupler paths, the strain and torque at each step, and the
+provenance. Both renderers consume it, so the HTML viewer and the paper figures cannot
+disagree about what was solved.
+
+*The viewer* is one HTML file with nothing fetched from anywhere: no CDN, no fonts, no
+server, no Python on the far end. A slider steps through precomputed FEA states — nothing is
+solved in the browser — with the flexures coloured by strain and the rigid and PRBM outlines
+over them as ghosts. It opens on a phone with no signal. A test scans the generated file for
+any external reference and fails the build over one.
+
+*The figures* come from `cmtool figures`, one command for the whole set. The point is that
+the same command run today and run after the parts are printed produces the right thing
+both times: today the measured series is absent and labelled absent, afterwards it is
+there.
+
+**The thing that took a second panel to say.** The three predicted coupler paths differ by
+under a millimetre across a part 140 mm wide, so drawn on top of each other they are one
+curve. The path figure therefore carries a second panel of *separation against input angle*,
+where the PRBM line sits flat on zero and the FEA line rises to about a millimetre at the
+arc ends. Flat-on-zero is not a missing series: it is the statement that with a prescribed
+input, stiffness cannot move the path.
+
+**Where it stops.** The viewer draws links, flexures and the base — not the input lever, the
+marker pads or the base plate outline. Those are rigidly attached to bodies already drawn,
+so they add nothing about the motion, and fetching them would pull the CAD kernel into the
+viewer for no gain.
 
 ---
 

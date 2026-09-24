@@ -12,10 +12,27 @@ findings that shaped the design, hardware settings, what's still unmeasured, and
 left. Then skim `README.md`, `docs/physics.md` (physics conventions and validity limits)
 and `docs/walkthrough.md` (plain-language explanation of each solver).
 
-Short version of where things stand: milestones A0–A5 are done, committed and pushed;
-381 tests pass with lint and types clean; CI is green on Ubuntu + Windows × Python
-3.11/3.12. Everything left in Phase A is **physical** — printing and measuring, not
-solver work.
+Short version of where things stand: milestones A0—A5 and the whole software half of
+A6 are done. **568 tests pass**, lint and types clean.
+
+**Start here.** The last session's work is on branch
+`MeghRaval/cmtool-continuation-47cf9d`, open as
+[PR #1](https://github.com/MeghRaval30/compliant-linkage-toolkit/pull/1) against `main`
+and **not yet merged**. Check CI on all five jobs and merge it before anything else. Use a
+PR for every milestone from now on.
+
+Everything left in Phase A is **physical** — printing and measuring, not solver work. The
+demo pair is exported and ready to slice: `examples/demo_pair/demo_pair_rigid.stl` (the
+pin-jointed control, ~23 min) and `examples/demo_pair/demo_pair.stl` (the compliant one,
+~56 min), with print sheets beside them. I am printing and measuring, and will report
+marker size, coupon thicknesses, modulus and allowable strain. **Do not guess any of
+those numbers while waiting.**
+
+Useful things that now exist: `cmtool ui` (a local design UI, one command, works offline),
+`cmtool view` (a one-file HTML viewer), `cmtool figures` (every paper figure, laid out at
+one journal column), `cmtool compare` (the demo pair's one-page sheet) and
+`cmtool export --rigid` (the pin-jointed control part).
+
 
 Two rules the codebase enforces and you must keep enforcing:
 

@@ -27,7 +27,7 @@ from rich.table import Table
 from cmtool import __version__
 from cmtool.api import available_solvers, simulate
 from cmtool.core.graph import Linkage
-from cmtool.core.provenance import git_commit
+from cmtool.core.provenance import Provenance, git_commit
 
 app = typer.Typer(
     add_completion=False,
@@ -441,6 +441,151 @@ def generate() -> None:
     _not_yet("B", "dataset sample generation")
 
 
+def _export_rigid(
+    linkage_json: Path,
+    *,
+    out: Path,
+    material: str,
+    printer: str,
+    joint_style: str,
+    clearance_mm: float,
+    pen_hole_mm: float,
+    link_width_mm: float,
+    base_depth_mm: float,
+    base_margin_mm: float,
+    bolt_inset_mm: float,
+) -> None:
+    """Export the pin-jointed control part, its print sheet and its layout."""
+    from cmtool.cad import check_printability, export_solid, write_print_sheet
+    from cmtool.cad.rigid import RigidCadSpec, build_rigid_mechanism, estimate_print
+    from cmtool.materials import Material, Printer
+
+    linkage = Linkage.from_json(linkage_json)
+    printer_cfg = Printer.load(printer)
+    material_cfg = Material.load(material)
+
+    spec = RigidCadSpec(
+        joint_style=joint_style,
+        clearance_mm=clearance_mm,
+        pen_hole_diameter_mm=pen_hole_mm,
+        link_width_mm=link_width_mm,
+        base_depth_mm=base_depth_mm,
+        base_margin_mm=base_margin_mm,
+        bolt_inset_mm=bolt_inset_mm,
+    )
+    try:
+        solid, layout = build_rigid_mechanism(linkage, spec=spec)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=1) from exc
+
+    collisions = [w for w in layout.warnings if w.startswith("COLLISION")]
+    if collisions:
+        for note in collisions:
+            console.print(f"[red]{note}[/]")
+        raise typer.Exit(code=1)
+
+    # The thinnest *solid* feature, not the clearance: a gap is not a wall, and
+    # feeding the clearance in here reports the part as unprintable for having a
+    # well-made joint.
+    thinnest = min(
+        spec.cap_thickness_mm,
+        spec.link_width_mm / 2.0 - (spec.pin_diameter_mm / 2.0 + spec.clearance_mm),
+    )
+    check = check_printability(solid, printer_cfg, min_feature_mm=thinnest)
+    stem = f"{linkage.name}_rigid"
+    paths = export_solid(solid, out, stem)
+
+    provenance = Provenance(notes={"part": stem})
+    density = material_cfg.density_kg_per_m3(provenance)
+    estimate = estimate_print(solid, density_kg_per_m3=density)
+
+    details: dict[str, object] = {
+        "joint style": joint_style,
+        "pin clearance (mm, radial)": clearance_mm,
+        "thinnest solid wall (mm)": round(thinnest, 2),
+        "pin diameter (mm)": spec.pin_diameter_mm,
+        "link width x thickness (mm)": f"{spec.link_width_mm} x {spec.link_thickness_mm}",
+        "stacked level heights (mm)": {k: round(v, 2) for k, v in layout.level_z_mm.items()},
+        "moving joints": layout.n_moving_joints,
+        "printed bodies": layout.n_printed_bodies,
+        "fasteners needed": layout.n_fasteners,
+        "pen hole": (
+            f"{pen_hole_mm:.1f} mm dia at "
+            f"({layout.pen_hole_mm[0]:.1f}, {layout.pen_hole_mm[1]:.1f}), "
+            f"top face z = {layout.pen_hole_z_mm + spec.link_thickness_mm:.1f} mm"
+            if layout.pen_hole_mm
+            else "none"
+        ),
+        "bolt holes (mm)": [[round(x, 2), round(y, 2)] for x, y in layout.bolt_holes_mm],
+        "ESTIMATED mass (g)": round(estimate["mass_g"], 1),
+        "ESTIMATED print time (min)": round(estimate["estimated_minutes"]),
+        "estimate basis": (
+            f"solid volume {estimate['volume_mm3']:.0f} mm^3 at "
+            f"{estimate['assumed_rate_mm3_per_s']:.0f} mm^3/s -- a planning figure, "
+            "NOT a measurement; use the slicer's number once you have it"
+        ),
+    }
+    instructions = [
+        "Print flat on the bed exactly as exported. No supports, no raft, no brim "
+        "unless the base plate lifts.",
+        "OrcaSlicer: 0.2 mm layers, 0.4 mm nozzle, Arachne wall generator, 3 walls, "
+        "20% infill. Arachne matters here for the same reason as everywhere else in "
+        "this project.",
+        "Do NOT enable ironing or elephant-foot compensation on the first print: both "
+        "change the effective clearance at the joints.",
+        "Let the part cool to room temperature before flexing anything.",
+        "Free the joints by twisting each link gently back and forth. If a joint will "
+        "not free off, reprint with --clearance-mm 0.45; if it rattles, 0.25.",
+        "Bolt the base to the fixture with M3 before driving the input link.",
+        "For the drawing: put paper under the coupler, drop a fineliner through the pen "
+        "hole so its tip rests on the paper, and walk the input link slowly from one end "
+        "of its arc to the other.",
+        "Draw the compliant part's path on the SAME sheet, with the base in the same "
+        "place, so the two curves can be compared directly.",
+    ]
+    sheet = write_print_sheet(
+        Path(out) / f"{stem}_print_sheet.md",
+        title=f"rigid pin-jointed four-bar {linkage.name}",
+        printer=printer_cfg,
+        material=material_cfg,
+        purpose=(
+            "The control half of the demo pair: the same four-bar built the way it "
+            "would have been built before compliant mechanisms. Printed alongside the "
+            "compliant part, it is what makes the no-assembly, no-friction argument "
+            "visible rather than asserted."
+        ),
+        check=check,
+        details=details,
+        instructions=instructions,
+    )
+
+    report = {
+        "linkage": linkage.to_dict(),
+        "layout": layout.to_dict(),
+        "printability": check.to_dict(),
+        "estimate": estimate,
+        "provenance": provenance.to_dict(),
+    }
+    report_path = Path(out) / f"{stem}.json"
+    report_path.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
+
+    size = check.bounding_box_mm
+    status = "[green]OK[/]" if check.ok else "[red]DOES NOT FIT[/]"
+    console.print(
+        f"{stem}: {status}  {size[0]:.0f} x {size[1]:.0f} x {size[2]:.0f} mm, "
+        f"~{estimate['mass_g']:.0f} g, ~{estimate['estimated_minutes']:.0f} min (estimated) "
+        f"-> {paths['stl'].name}, {paths['step'].name}, {sheet.name}, {report_path.name}"
+    )
+    for note in layout.warnings:
+        console.print(f"    [yellow]{note}[/]")
+    for note in check.notes:
+        console.print(f"    [yellow]{note}[/]")
+    caveat = provenance.caveat()
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
+
+
 @app.command()
 def export(
     linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
@@ -458,8 +603,54 @@ def export(
     ] = 22.0,
     link_width_mm: Annotated[float, typer.Option(help="Rigid link width")] = 8.0,
     lever_length_mm: Annotated[float, typer.Option(help="Input lever length")] = 45.0,
+    rigid: Annotated[
+        bool,
+        typer.Option(
+            "--rigid/--compliant",
+            help="Export the pin-jointed control part instead of the compliant one",
+        ),
+    ] = False,
+    joint_style: Annotated[
+        str, typer.Option(help="Rigid only: print_in_place or bolt")
+    ] = "print_in_place",
+    clearance_mm: Annotated[float, typer.Option(help="Rigid only: radial pin clearance")] = 0.35,
+    pen_hole_mm: Annotated[
+        float,
+        typer.Option(help="Through-hole at the coupler point so the part draws its path"),
+    ] = 5.0,
+    base_depth_mm: Annotated[
+        float, typer.Option(help="Base plate depth; match it across a demo pair")
+    ] = 38.0,
+    base_margin_mm: Annotated[
+        float, typer.Option(help="Base plate overhang past each ground pivot")
+    ] = 14.0,
+    bolt_inset_mm: Annotated[
+        float, typer.Option(help="Mounting hole inset from the base plate corners")
+    ] = 8.0,
 ) -> None:
-    """Export the printable monolithic part for a compliant mechanism."""
+    """Export the printable part for a mechanism, compliant or pin-jointed.
+
+    ``--rigid`` gives the control: the same four-bar with pin joints, the same
+    link lengths, coupler point, base footprint and mounting holes. Both halves
+    carry a pen hole at the coupler point, so each draws its own coupler path on
+    the same sheet of paper.
+    """
+    if rigid:
+        _export_rigid(
+            linkage_json,
+            out=out,
+            material=material,
+            printer=printer,
+            joint_style=joint_style,
+            clearance_mm=clearance_mm,
+            pen_hole_mm=pen_hole_mm,
+            link_width_mm=max(link_width_mm, 10.0),
+            base_depth_mm=base_depth_mm,
+            base_margin_mm=base_margin_mm,
+            bolt_inset_mm=bolt_inset_mm,
+        )
+        return
+
     from cmtool.api import convert as convert_api
     from cmtool.cad import check_printability, export_solid, write_print_sheet
     from cmtool.cad.mechanism import MechanismCadSpec, build_mechanism
@@ -492,7 +683,14 @@ def export(
 
     printer_cfg = Printer.load(printer)
     material_cfg = Material.load(material)
-    spec = MechanismCadSpec(link_width_mm=link_width_mm, lever_length_mm=lever_length_mm)
+    spec = MechanismCadSpec(
+        link_width_mm=link_width_mm,
+        lever_length_mm=lever_length_mm,
+        pen_hole_diameter_mm=pen_hole_mm,
+        base_depth_mm=base_depth_mm,
+        base_margin_mm=base_margin_mm,
+        bolt_inset_mm=bolt_inset_mm,
+    )
     solid, layout = build_mechanism(mech, spec=spec, printer=printer_cfg)
 
     thinnest = min(s.geometry.thickness_mm for s in mech.sizing.values())
@@ -511,6 +709,12 @@ def export(
         "fiducial pad spacing (mm)": round(layout.fiducial_spacing_mm, 2),
         "force hole radius from input pivot (mm)": round(layout.force_radius_mm, 2),
         "marker pad plane z (mm)": layout.pad_plane_z_mm,
+        "pen hole at coupler point (mm)": (
+            f"{pen_hole_mm:.1f} dia at "
+            f"({layout.coupler_pad_mm[0]:.1f}, {layout.coupler_pad_mm[1]:.1f})"
+            if pen_hole_mm > 0.0 and layout.coupler_pad_mm
+            else "none"
+        ),
         "bolt holes (mm)": [[round(x, 2), round(y, 2)] for x, y in layout.bolt_holes_mm],
     }
     instructions = [
@@ -579,6 +783,351 @@ def export(
     for note in mech.feasibility.prbm_notes():
         console.print(f"    [dim]{note}[/]")
     caveat = mech.provenance.caveat()
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
+
+
+def _convert_for_view(
+    linkage: Linkage,
+    *,
+    material: str,
+    printer: str,
+    thickness_mm: float | None,
+    fit_arc: bool,
+    target_excursion_deg: float,
+) -> Any:
+    """Convert a linkage the same way ``export`` does, so the picture matches the part."""
+    from cmtool.api import convert as convert_api
+    from cmtool.convert.arc import ArcFitError, fit_input_arc
+
+    arc = linkage.input_range_deg
+    if fit_arc:
+        try:
+            fit = fit_input_arc(linkage, max_joint_excursion_deg=target_excursion_deg)
+        except ArcFitError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from exc
+        arc = fit.input_range_deg
+    return convert_api(
+        linkage,
+        material=material,
+        printer=printer,
+        input_range_deg=arc,
+        thickness_mm=thickness_mm,
+    )
+
+
+@app.command(name="view")
+def view_cmd(
+    linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
+    html_out: Annotated[Path, typer.Option("--html", help="Where to write the viewer")] = Path(
+        "out/view.html"
+    ),
+    steps: Annotated[int, typer.Option(help="Precomputed states across the input arc")] = 41,
+    measured_csv: Annotated[
+        Path | None, typer.Option("--measured", help="Tracked path CSV to overlay")
+    ] = None,
+    solvers: Annotated[
+        str, typer.Option(help="Comma-separated models to include: rigid, prbm, fea")
+    ] = "rigid,prbm,fea",
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
+    thickness_mm: Annotated[
+        float | None, typer.Option(help="Flexure thickness; default is the printer minimum")
+    ] = None,
+    fit_arc: Annotated[
+        bool, typer.Option(help="Shrink the input arc to meet the excursion target")
+    ] = True,
+    target_excursion_deg: Annotated[
+        float, typer.Option(help="Ceiling for the worst joint excursion")
+    ] = 22.0,
+    min_flexure_mm: Annotated[
+        float,
+        typer.Option(help="Minimum drawn flexure width; 0 draws them at true scale"),
+    ] = 1.6,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Also write the scene as JSON")
+    ] = None,
+) -> None:
+    """Write a self-contained HTML viewer of a design over its input arc.
+
+    The output needs nothing to open: no server, no install, no network. Every
+    state is precomputed here and baked into the file, so the slider steps
+    through real solver output rather than anything the browser worked out.
+    """
+    from cmtool.metrics.paths import read_path_csv
+    from cmtool.viz.html import write_html
+    from cmtool.viz.scene import build_scene
+
+    linkage = Linkage.from_json(linkage_json)
+    mech = _convert_for_view(
+        linkage,
+        material=material,
+        printer=printer,
+        thickness_mm=thickness_mm,
+        fit_arc=fit_arc,
+        target_excursion_deg=target_excursion_deg,
+    )
+    include = tuple(s.strip() for s in solvers.split(",") if s.strip())
+    measured = read_path_csv(measured_csv) if measured_csv is not None else None
+
+    if "fea" in include:
+        console.print(f"solving {steps} states with the beam FEA; this takes a few seconds")
+    scene = build_scene(mech, n_steps=steps, measured=measured, include=include)
+
+    path = write_html(scene, html_out, min_flexure_mm=min_flexure_mm)
+    size_kb = path.stat().st_size / 1024.0
+
+    table = Table(title=f"{scene.name} viewer", show_header=False, box=None)
+    table.add_row("states", str(scene.n_frames))
+    table.add_row("models", ", ".join(scene.models))
+    table.add_row(
+        "input arc (deg)",
+        f"{scene.input_angles_deg[0]:.2f} -> {scene.input_angles_deg[-1]:.2f}",
+    )
+    for comparison in scene.comparisons:
+        mean = comparison["mean_mm"]
+        table.add_row(
+            f"{comparison['a']} vs {comparison['b']} (mm)",
+            ("mean -" if mean is None else f"mean {mean:.3f}")
+            + f", Frechet {comparison['frechet_mm']:.3f}",
+        )
+    table.add_row("file", f"{path} ({size_kb:.0f} kB)")
+    console.print(table)
+
+    for note in scene.notes:
+        console.print(f"[dim]{note}[/]")
+    caveat = scene.caveat
+    if caveat:
+        console.print(f"[yellow]{caveat}[/]")
+
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(
+            json.dumps(scene.to_dict(), indent=2, default=str) + "\n", encoding="utf-8"
+        )
+        console.print(f"wrote {json_out}")
+
+
+@app.command(name="compare")
+def compare_cmd(
+    linkage_json: Annotated[Path, typer.Argument(help="Linkage JSON file")],
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("out/compare"),
+    steps: Annotated[int, typer.Option(help="States across the input arc")] = 31,
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
+    clearance_mm: Annotated[float, typer.Option(help="Rigid pin clearance")] = 0.35,
+    lever_length_mm: Annotated[
+        float, typer.Option(help="Compliant input lever; match what you exported")
+    ] = 45.0,
+) -> None:
+    """Write the one-page sheet comparing the pin-jointed and compliant parts.
+
+    Part counts, assembly, joints, predicted torque, path deviation and strain
+    margin, side by side. Cells that depend on measurements nobody has taken are
+    left blank and say why -- filling them in would claim the comparison the demo
+    exists to make.
+    """
+    import warnings
+
+    from cmtool.api import convert as convert_api
+    from cmtool.cad.export import bounding_box_mm
+    from cmtool.cad.mechanism import MechanismCadSpec, build_mechanism
+    from cmtool.cad.rigid import RigidCadSpec, build_rigid_mechanism, estimate_print
+    from cmtool.materials import Material, Printer
+    from cmtool.metrics.comparison import build_comparison, write_comparison
+    from cmtool.viz.scene import build_scene
+
+    linkage = Linkage.from_json(linkage_json)
+    if linkage.input_range_deg is None:
+        console.print("[red]this linkage has no input arc; set input_range_deg first[/]")
+        raise typer.Exit(code=2)
+
+    # Shared base geometry: one fixture position has to serve both parts, so the
+    # two specs are given the same plate rather than each keeping its default.
+    base_depth, base_margin, bolt_inset = 22.0, 10.0, 7.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mech = convert_api(
+            linkage,
+            material=material,
+            printer=printer,
+            input_range_deg=linkage.input_range_deg,
+        )
+        scene = build_scene(mech, n_steps=steps)
+
+        rigid_solid, rigid_layout = build_rigid_mechanism(
+            linkage,
+            spec=RigidCadSpec(
+                clearance_mm=clearance_mm,
+                base_depth_mm=base_depth,
+                base_margin_mm=base_margin,
+                bolt_inset_mm=bolt_inset,
+            ),
+        )
+        printer_cfg = Printer.load(printer)
+        compliant_solid, _ = build_mechanism(
+            mech,
+            spec=MechanismCadSpec(
+                link_width_mm=10.0,
+                pen_hole_diameter_mm=5.0,
+                lever_length_mm=lever_length_mm,
+                base_depth_mm=base_depth,
+                base_margin_mm=base_margin,
+                bolt_inset_mm=bolt_inset,
+            ),
+            printer=printer_cfg,
+        )
+        density = Material.load(material).density_kg_per_m3(Provenance())
+
+    sheet = build_comparison(
+        scene,
+        mech,
+        rigid_layout=rigid_layout,
+        rigid_estimate=estimate_print(rigid_solid, density_kg_per_m3=density),
+        compliant_estimate=estimate_print(compliant_solid, density_kg_per_m3=density),
+        rigid_extent_mm=bounding_box_mm(rigid_solid),
+        compliant_extent_mm=bounding_box_mm(compliant_solid),
+        clearance_mm=clearance_mm,
+    )
+    path = write_comparison(sheet, Path(out) / f"{linkage.name}_comparison.md")
+
+    table = Table(title=f"{linkage.name}: rigid vs compliant", show_header=True)
+    table.add_column("")
+    table.add_column("rigid")
+    table.add_column("compliant")
+    for row in sheet.rows:
+        table.add_row(
+            row.label.replace("&middot;", "."),
+            row.rigid.replace("&plusmn;", "+/-"),
+            row.compliant.replace("&plusmn;", "+/-"),
+        )
+    console.print(table)
+    console.print(f"wrote {path}")
+    for item in sheet.unmeasured:
+        console.print(f"[dim]blank: {item.split('.')[0].replace('**', '')}[/]")
+    if sheet.caveat:
+        console.print(f"[yellow]{sheet.caveat}[/]")
+
+
+@app.command(name="ui")
+def ui_cmd(
+    host: Annotated[str, typer.Option(help="Interface to bind; loopback only by default")] = (
+        "127.0.0.1"
+    ),
+    port: Annotated[int | None, typer.Option(help="Port; picks a free one when busy")] = None,
+    open_browser: Annotated[
+        bool, typer.Option("--open/--no-open", help="Open a browser once the server is up")
+    ] = True,
+) -> None:
+    """Start the local design UI and open it in a browser.
+
+    One command, no build step and no network: the page and its script ship
+    inside the package, and the server binds loopback. Edit the four link
+    lengths, the coupler point, the arc and the flexures, press solve, and get
+    the feasibility verdict, the animated mechanism, the path overlay, the
+    torque curve and the per-flexure strain -- all from the same solvers the CLI
+    uses.
+    """
+    from cmtool.ui.server import DEFAULT_HOST, find_port, serve
+
+    try:
+        chosen = port or find_port(host or DEFAULT_HOST)
+    except OSError as exc:
+        console.print(f"[red]could not bind {host}: {exc}[/]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"cmtool UI on [bold]http://{host}:{chosen}/[/] -- Ctrl+C to stop")
+    console.print("[dim]local only: loopback, no network access, nothing fetched[/]")
+    try:
+        serve(host=host, port=chosen, open_browser=open_browser)
+    except ModuleNotFoundError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(code=2) from exc
+    except KeyboardInterrupt:  # pragma: no cover - interactive
+        console.print("stopped")
+
+
+@app.command(name="figures")
+def figures_cmd(
+    out: Annotated[Path, typer.Option(help="Output directory")] = Path("docs/figures"),
+    designs: Annotated[
+        str | None,
+        typer.Option(help="Comma-separated linkage JSON files; default is the three pilots"),
+    ] = None,
+    steps: Annotated[int, typer.Option(help="States per design across the input arc")] = 41,
+    measured_csv: Annotated[
+        Path | None, typer.Option("--measured", help="Tracked coupler path CSV")
+    ] = None,
+    torque_csv: Annotated[
+        Path | None, typer.Option("--torque", help="Filled-in torque measurement template")
+    ] = None,
+    uncertainty_json: Annotated[
+        Path | None,
+        typer.Option("--uncertainty", help="Report from 'cmtool uncertainty --json'"),
+    ] = None,
+    only: Annotated[
+        str | None, typer.Option(help="Comma-separated figure names; default is all of them")
+    ] = None,
+    theme: Annotated[str, typer.Option(help="light or dark")] = "light",
+    column: Annotated[
+        str,
+        typer.Option(help="Page width to lay out for: single (one journal column) or double"),
+    ] = "single",
+    formats: Annotated[str, typer.Option(help="Comma-separated: png, svg, pdf")] = "png",
+    material: Annotated[str, typer.Option(help="Material config name")] = "PLA",
+    printer: Annotated[str, typer.Option(help="Printer config name")] = "kobra2_neo",
+) -> None:
+    """Regenerate every README and paper figure in one command.
+
+    Figures whose measurements do not exist yet are drawn without that series and
+    labelled, or skipped with a reason -- never filled in with a stand-in. Pass
+    --measured, --torque and --uncertainty as those measurements arrive and the
+    same command produces the finished set.
+
+    Every figure is laid out at its final printed width -- one journal column by
+    default -- and carries a dash pattern and a marker per series as well as a
+    colour, so it survives a greyscale print and a colour-blind reader.
+    """
+    from cmtool.viz.figures import DEFAULT_DESIGNS, build_inputs, generate_all
+
+    sources = (
+        tuple(d.strip() for d in designs.split(",") if d.strip()) if designs else DEFAULT_DESIGNS
+    )
+    suffixes = tuple(f.strip().lstrip(".") for f in formats.split(",") if f.strip())
+    wanted = tuple(n.strip() for n in only.split(",") if n.strip()) if only else None
+
+    console.print(
+        f"solving {len(sources)} design(s) x {steps} states with the beam FEA; "
+        "this takes a few seconds each"
+    )
+    inputs = build_inputs(
+        sources,
+        n_steps=steps,
+        measured_csv=measured_csv,
+        torque_csv=torque_csv,
+        uncertainty_json=uncertainty_json,
+        material=material,
+        printer=printer,
+    )
+    results = generate_all(out, inputs, theme=theme, formats=suffixes, only=wanted, column=column)
+
+    table = Table(title=f"figures -> {out}")
+    table.add_column("figure")
+    table.add_column("status")
+    table.add_column("note")
+    for result in results:
+        if result.produced:
+            status = "[green]written[/]"
+            note = "missing: " + ", ".join(result.missing) if result.missing else ""
+        else:
+            status = "[yellow]skipped[/]"
+            note = result.reason or ""
+        table.add_row(result.name, status, note)
+    console.print(table)
+    console.print(f"manifest: {Path(out) / 'figures.json'}")
+
+    caveat = inputs.provenance.caveat()
     if caveat:
         console.print(f"[yellow]{caveat}[/]")
 

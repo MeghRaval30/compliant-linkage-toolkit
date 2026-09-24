@@ -76,6 +76,17 @@ class BeamSection:
         )
 
     @property
+    def in_plane_thickness_mm(self) -> float:
+        """In-plane depth ``t``, recovered as ``sqrt(12 I / A)``.
+
+        Exact for a rectangle, since ``A = t w`` and ``I = w t^3 / 12`` give
+        ``12 I / A = t^2``. Every section this solver builds is rectangular, and
+        recovering ``t`` this way means the element carries its own thickness
+        rather than the callers having to track it alongside.
+        """
+        return float(np.sqrt(12.0 * self.second_moment_mm4 / self.area_mm2))
+
+    @property
     def ea(self) -> float:
         """Axial rigidity ``E A``."""
         return self.youngs_modulus_mpa * self.area_mm2

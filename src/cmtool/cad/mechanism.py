@@ -9,14 +9,9 @@ Construction
 Every joint gets a flexure: a thin prismatic strip of length ``L`` and thickness
 ``t``, aligned with its host link and placed so that its **characteristic pivot**
 lands on the original rigid joint. That is what pivot matching means, and it
-keeps the effective link lengths unchanged.
-
-Where the pivot sits depends on which pseudo-rigid-body model applies. The
-small-length model pivots at the flexure's centre, so the strip is centred on the
-joint. A long segment pivots at ``(1 - gamma) L`` from its root -- about 0.15 L
-for the end-force variant -- so the strip sits asymmetrically and most of it lies
-on the far side of the joint. Centring a long segment would put its pivot roughly
-``0.35 L`` away from where the kinematics assume it is.
+keeps the effective link lengths unchanged. Where those strips end up is
+:func:`cmtool.convert.placement.attachment_points`, shared with the beam FEA and
+the viewer so all three draw the same part.
 
 Each body then becomes a straight bar between its two **attachment points**,
 where the attachment point at a joint is the end of that joint's flexure on the
@@ -57,6 +52,9 @@ import cadquery as cq
 import numpy as np
 
 from cmtool.convert.base import CompliantMechanism
+from cmtool.convert.placement import attachment_points as _attachment_points
+from cmtool.convert.placement import normal_vector as _normal
+from cmtool.convert.placement import unit_vector as _unit
 from cmtool.core.graph import Linkage
 from cmtool.core.provenance import Provenance
 from cmtool.core.units import FloatArray
@@ -80,6 +78,11 @@ class MechanismCadSpec:
     force_point_fraction: float = 0.8
     fillet_radius_mm: float = 0.0
     part_thickness_mm: float | None = None
+    #: Through-hole at the coupler point so the part can draw its own path on
+    #: paper. Zero leaves the marker pad solid. The rigid control part carries
+    #: the same hole at the same coordinate, which is what lets the two curves
+    #: be compared on one sheet.
+    pen_hole_diameter_mm: float = 0.0
 
     def resolved_thickness_mm(
         self, printer: Printer, provenance: Provenance | None = None
@@ -88,17 +91,6 @@ class MechanismCadSpec:
         if self.part_thickness_mm is not None:
             return float(self.part_thickness_mm)
         return printer.part_thickness_mm(provenance)
-
-
-def _unit(vector: FloatArray) -> FloatArray:
-    norm = float(np.linalg.norm(vector))
-    if norm <= 0.0:
-        raise ValueError("cannot normalise a zero-length vector")
-    return np.asarray(vector, dtype=float) / norm
-
-
-def _normal(direction: FloatArray) -> FloatArray:
-    return np.array([-direction[1], direction[0]], dtype=float)
 
 
 def _bar(start: FloatArray, end: FloatArray, width: float, depth: float) -> cq.Workplane:
@@ -197,37 +189,6 @@ class MechanismLayout:
             "lever_clears_base": self.lever_clears_base,
             "warnings": list(self.warnings),
         }
-
-
-def _attachment_points(
-    mechanism: CompliantMechanism, linkage: Linkage
-) -> tuple[dict[str, dict[str, FloatArray]], dict[str, FloatArray]]:
-    """Compute per-body attachment points and each flexure's axis direction."""
-    attachments: dict[str, dict[str, FloatArray]] = {b: {} for b in linkage.bodies}
-    axes: dict[str, FloatArray] = {}
-
-    for joint_name, joint in linkage.joints.items():
-        sized = mechanism.sizing[joint_name]
-        host = sized.host_body
-        pivot = joint.position_mm
-
-        far = [j for j in linkage.joints_of(host) if j != joint_name]
-        toward = linkage.joints[far[0]].position_mm - pivot if far else np.array([1.0, 0.0])
-        axis = _unit(toward)
-        axes[joint_name] = axis
-
-        # Pivot matching means the model's CHARACTERISTIC PIVOT lands on the rigid
-        # joint -- not the flexure's midpoint. That is the same thing only for the
-        # small-length model, whose pivot happens to be at the centre. A long
-        # segment pivots at (1 - gamma) L from its root, so the flexure sits
-        # asymmetrically about the joint and most of it lies on the far side.
-        length = sized.geometry.length_mm
-        from_root = sized.pivot_from_root_mm
-        other = joint.other(host)
-        attachments[host][joint_name] = pivot + axis * from_root
-        attachments[other][joint_name] = pivot - axis * (length - from_root)
-
-    return attachments, axes
 
 
 def build_mechanism(
@@ -384,6 +345,15 @@ def build_mechanism(
                 solid = solid.union(_bar(nearest, point, spec.link_width_mm * 0.7, depth))
         layout.coupler_pad_mm = (float(point[0]), float(point[1]))
         solid = solid.union(_pad(point, spec.pad_size_mm * 0.6, depth, spec.pad_thickness_mm))
+        if spec.pen_hole_diameter_mm > 0.0:
+            # Through the pad and the part together, so a pen dropped in reaches
+            # the paper. The ArUco pad is still usable around it.
+            solid = solid.cut(
+                cq.Workplane("XY")
+                .moveTo(float(point[0]), float(point[1]))
+                .circle(spec.pen_hole_diameter_mm / 2.0)
+                .extrude(depth + spec.pad_thickness_mm + 1.0)
+            )
 
     return solid, layout
 

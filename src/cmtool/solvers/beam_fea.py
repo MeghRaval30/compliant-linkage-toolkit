@@ -24,17 +24,27 @@ Cost
 Each input angle is a nonlinear solve, so this is seconds where the PRBM is
 milliseconds. That is the trade the dataset is built around: PRBM for volume, FEA
 for accuracy, and the disagreement between them recorded as a metric.
+
+Deformed shape
+--------------
+:class:`SimulationResult` records where the *joints* and output points went, which
+is what the metrics need. The bent shape of each flexure -- what a viewer draws --
+is discarded, because keeping it for every sample of a Phase B batch would dwarf
+the sample itself. :func:`solve_with_shape` keeps it, returning a
+:class:`DeformedShape` beside the usual result.
 """
 
 from __future__ import annotations
 
 import itertools
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from cmtool.convert.base import CompliantMechanism
+from cmtool.convert.placement import attachment_points
 from cmtool.core.graph import Linkage
 from cmtool.core.provenance import Provenance
 from cmtool.core.units import FloatArray, rotation_matrix, wrap_to_pi
@@ -66,16 +76,15 @@ class BeamMesh:
         flexure_elements: int = DEFAULT_FLEXURE_ELEMENTS,
         link_elements: int = DEFAULT_LINK_ELEMENTS,
     ) -> None:
-        from cmtool.cad.mechanism import _attachment_points
-
         self.mechanism = mechanism
         self.linkage: Linkage = mechanism.base
-        self.attachments, self.axes = _attachment_points(mechanism, self.linkage)
+        self.attachments, self.axes = attachment_points(mechanism, self.linkage)
 
         self._points: list[FloatArray] = []
         self._elements: list[tuple[int, int]] = []
         self._sections: list[BeamSection] = []
         self.flexure_elements: dict[str, list[int]] = {}
+        self.link_elements: dict[str, list[int]] = {}
         self.attachment_node: dict[tuple[str, str], int] = {}
 
         link_section = BeamSection.rectangular(link_width_mm, part_thickness_mm, youngs_modulus_mpa)
@@ -106,7 +115,7 @@ class BeamMesh:
             self.body_nodes[body] = (first, second)
             if self.linkage.bodies[body].is_ground:
                 continue  # ground is clamped, so it needs no elements
-            self._connect(first, second, link_elements, link_section)
+            self.link_elements[body] = self._connect(first, second, link_elements, link_section)
 
         self.model = BeamModel(
             np.asarray(self._points, dtype=float), self._elements, self._sections
@@ -142,19 +151,27 @@ class BeamMesh:
             ids.append(len(self._elements) - 1)
         return nodes[0], nodes[-1], ids
 
-    def _connect(self, first: int, second: int, count: int, section: BeamSection) -> None:
-        """Connect two existing nodes with a chain of intermediate nodes."""
+    def _connect(self, first: int, second: int, count: int, section: BeamSection) -> list[int]:
+        """Connect two existing nodes with a chain of intermediate nodes.
+
+        Returns the element ids in order from ``first`` to ``second``, so a
+        caller can walk the chain as a polyline.
+        """
         start = self._points[first]
         end = self._points[second]
         previous = first
+        ids: list[int] = []
         for index in range(1, count):
             fraction = index / count
             previous_new = self._node(np.asarray(start) + fraction * (np.asarray(end) - start))
             self._elements.append((previous, previous_new))
             self._sections.append(section)
+            ids.append(len(self._elements) - 1)
             previous = previous_new
         self._elements.append((previous, second))
         self._sections.append(section)
+        ids.append(len(self._elements) - 1)
+        return ids
 
     def _body_frame(self, body: str, coords: FloatArray) -> tuple[FloatArray, float]:
         first, second = self.body_nodes[body]
@@ -215,6 +232,14 @@ class BeamMesh:
             out[name] = origin + rotation_matrix(angle) @ local
         return out
 
+    def element_thickness_mm(self) -> FloatArray:
+        """In-plane thickness of every element: flexure ``t``, or link width."""
+        return np.asarray([s.in_plane_thickness_mm for s in self._sections], dtype=float)
+
+    def element_strains(self, displacement: FloatArray) -> FloatArray:
+        """Peak surface bending strain in every element, ``curvature * t / 2``."""
+        return self.model.element_curvatures(displacement) * self.element_thickness_mm() / 2.0
+
     def flexure_strains(self, displacement: FloatArray) -> dict[str, float]:
         """Peak bending strain in each flexure, from element curvature."""
         curvatures = self.model.element_curvatures(displacement)
@@ -223,6 +248,66 @@ class BeamMesh:
             thickness = self.mechanism.sizing[joint_name].geometry.thickness_mm
             out[joint_name] = float(max(curvatures[i] for i in ids) * thickness / 2.0)
         return out
+
+
+@dataclass(frozen=True)
+class DeformedShape:
+    """The bent geometry of a meshed mechanism across a whole sweep.
+
+    This is the geometry a viewer draws: not the idealised centrelines of the
+    rigid model, but the beam elements where the solver actually put them, with
+    the strain each one carries.
+
+    Attributes
+    ----------
+    nodes_mm
+        ``(n_states, n_nodes, 2)`` deformed node coordinates, in mm.
+    elements
+        ``(n_elements, 2)`` node index pairs.
+    element_strain
+        ``(n_states, n_elements)`` peak surface bending strain per element,
+        ``curvature * t / 2`` with ``t`` that element's in-plane thickness.
+    element_thickness_mm
+        ``(n_elements,)`` in-plane thickness of each element: the flexure
+        thickness for a flexure, the link width for a link. This is what lets a
+        drawing show true proportions rather than a stick figure.
+    flexure_elements
+        Element indices belonging to each joint's flexure.
+    body_elements
+        Element indices belonging to each moving body's rigid link. Ground is
+        absent: it is clamped, so it is never meshed.
+    """
+
+    nodes_mm: FloatArray
+    elements: FloatArray
+    element_strain: FloatArray
+    element_thickness_mm: FloatArray
+    flexure_elements: dict[str, list[int]]
+    body_elements: dict[str, list[int]]
+
+    @property
+    def n_states(self) -> int:
+        """Number of swept states."""
+        return int(self.nodes_mm.shape[0])
+
+    def element_polyline(self, state: int, element: int) -> FloatArray:
+        """Return the ``(2, 2)`` deformed end coordinates of one element."""
+        first, second = self.elements[element]
+        return np.asarray(
+            [self.nodes_mm[state, int(first)], self.nodes_mm[state, int(second)]], dtype=float
+        )
+
+    def chain_polyline(self, state: int, element_ids: list[int]) -> FloatArray:
+        """Return the deformed polyline through a connected chain of elements.
+
+        The chain is walked in the order given, which is the order the mesh was
+        built in, so consecutive elements share a node.
+        """
+        if not element_ids:
+            return np.empty((0, 2))
+        points = [self.nodes_mm[state, int(self.elements[element_ids[0]][0])]]
+        points.extend(self.nodes_mm[state, int(self.elements[i][1])] for i in element_ids)
+        return np.asarray(points, dtype=float)
 
 
 class BeamFeaSolver:
@@ -238,19 +323,40 @@ class BeamFeaSolver:
         self,
         linkage: Linkage,
         input_angles_rad: FloatArray,
-        *,
-        mechanism: CompliantMechanism | None = None,
-        flexure_elements: int = DEFAULT_FLEXURE_ELEMENTS,
-        link_elements: int = DEFAULT_LINK_ELEMENTS,
-        link_width_mm: float = 8.0,
-        step_deg: float = DEFAULT_STEP_DEG,
-        **_: Any,
+        **kwargs: Any,
     ) -> SimulationResult:
         """Solve the meshed mechanism at each input angle.
 
         The sweep is solved in order with each step warm-started from the last
         converged state, which is what keeps Newton in its basin across a large
         total rotation.
+        """
+        kwargs.pop("capture_shape", None)
+        result, _ = self.solve_with_shape(linkage, input_angles_rad, capture_shape=False, **kwargs)
+        return result
+
+    def solve_with_shape(
+        self,
+        linkage: Linkage,
+        input_angles_rad: FloatArray,
+        *,
+        mechanism: CompliantMechanism | None = None,
+        flexure_elements: int = DEFAULT_FLEXURE_ELEMENTS,
+        link_elements: int = DEFAULT_LINK_ELEMENTS,
+        link_width_mm: float = 8.0,
+        step_deg: float = DEFAULT_STEP_DEG,
+        capture_shape: bool = True,
+        **_: Any,
+    ) -> tuple[SimulationResult, DeformedShape | None]:
+        """Solve as :meth:`solve` does, optionally keeping the deformed geometry.
+
+        Parameters
+        ----------
+        capture_shape
+            Keep the deformed node coordinates and per-element strain of every
+            state, returned as a :class:`DeformedShape`. ``False`` returns
+            ``None`` in its place, which is what :meth:`solve` does so that batch
+            runs do not carry geometry they will discard.
         """
         if mechanism is None:
             raise ValueError(
@@ -292,6 +398,8 @@ class BeamFeaSolver:
         torque = np.zeros(angles.size)
         strains: dict[str, list[float]] = {j: [] for j in linkage.joints}
         iterations: list[int] = []
+        shape_nodes: list[FloatArray] = []
+        shape_strain: list[FloatArray] = []
 
         for index, angle in enumerate(angles):
             target = float(wrap_to_pi(angle - reference))
@@ -311,6 +419,9 @@ class BeamFeaSolver:
             torque[index] = float(outcome.reaction[rotation_dof])
             for joint_name, value in mesh.flexure_strains(displacement).items():
                 strains[joint_name].append(value)
+            if capture_shape:
+                shape_nodes.append(mesh.model.deformed_nodes(displacement))
+                shape_strain.append(mesh.element_strains(displacement))
 
             states.append(
                 MechanismState(
@@ -327,7 +438,7 @@ class BeamFeaSolver:
         allowable = mechanism.feasibility.allowable_strain
         overall = max(peak.values()) if peak else 0.0
 
-        return SimulationResult(
+        result = SimulationResult(
             solver=self.name,
             linkage=linkage,
             states=states,
@@ -349,5 +460,58 @@ class BeamFeaSolver:
             },
         )
 
+        if not capture_shape:
+            return result, None
+
+        shape = DeformedShape(
+            nodes_mm=np.asarray(shape_nodes, dtype=float),
+            elements=np.asarray(mesh.model.elements, dtype=int),
+            element_strain=np.asarray(shape_strain, dtype=float),
+            element_thickness_mm=mesh.element_thickness_mm(),
+            flexure_elements={k: list(v) for k, v in mesh.flexure_elements.items()},
+            body_elements={k: list(v) for k, v in mesh.link_elements.items()},
+        )
+        return result, shape
+
 
 SOLVERS.add("beam_fea", BeamFeaSolver())
+
+
+def solve_with_shape(
+    mechanism: CompliantMechanism,
+    input_angles_rad: FloatArray,
+    **kwargs: Any,
+) -> tuple[SimulationResult, DeformedShape]:
+    """Run the beam FEA over an arc and keep the deformed geometry.
+
+    The registered ``beam_fea`` solver returns only a
+    :class:`~cmtool.solvers.base.SimulationResult`, because that is what the
+    metrics and the dataset consume. Drawing the mechanism needs the bent shape
+    of each flexure as well, and this is the way to get it.
+
+    Parameters
+    ----------
+    mechanism
+        The converted mechanism. Unlike :func:`cmtool.api.simulate` this takes
+        the compliant mechanism directly, since the FEA cannot run without it.
+    input_angles_rad
+        Absolute input-link orientations to solve at, in radians.
+    **kwargs
+        Forwarded to :meth:`BeamFeaSolver.solve_with_shape`.
+
+    Returns
+    -------
+    tuple
+        The usual result, and the :class:`DeformedShape` of the same states.
+    """
+    solver = BeamFeaSolver()
+    result, shape = solver.solve_with_shape(
+        mechanism.base,
+        input_angles_rad,
+        mechanism=mechanism,
+        capture_shape=True,
+        **kwargs,
+    )
+    if shape is None:  # pragma: no cover - capture_shape is forced on above
+        raise RuntimeError("beam FEA returned no deformed shape despite capture_shape=True")
+    return result, shape

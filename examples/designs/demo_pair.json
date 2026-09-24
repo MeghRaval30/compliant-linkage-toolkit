@@ -1,0 +1,86 @@
+{
+  "name": "demo_pair",
+  "bodies": [
+    {
+      "name": "ground",
+      "is_ground": true
+    },
+    {
+      "name": "input",
+      "is_ground": false
+    },
+    {
+      "name": "coupler",
+      "is_ground": false
+    },
+    {
+      "name": "output",
+      "is_ground": false
+    }
+  ],
+  "joints": {
+    "A": {
+      "bodies": [
+        "ground",
+        "input"
+      ],
+      "xy_mm": [
+        0.0,
+        0.0
+      ],
+      "kind": "revolute"
+    },
+    "B": {
+      "bodies": [
+        "input",
+        "coupler"
+      ],
+      "xy_mm": [
+        1.959434878635765e-15,
+        32.0
+      ],
+      "kind": "revolute"
+    },
+    "C": {
+      "bodies": [
+        "coupler",
+        "output"
+      ],
+      "xy_mm": [
+        43.83603169013249,
+        35.79503961266559
+      ],
+      "kind": "revolute"
+    },
+    "D": {
+      "bodies": [
+        "output",
+        "ground"
+      ],
+      "xy_mm": [
+        40.0,
+        0.0
+      ],
+      "kind": "revolute"
+    }
+  },
+  "outputs": {
+    "P": {
+      "body": "coupler",
+      "xy_mm": [
+        22.0,
+        38.0
+      ]
+    }
+  },
+  "input_joint": "A",
+  "input_range_deg": [
+    79.013,
+    100.987
+  ],
+  "meta": {
+    "assembly_branch": 1,
+    "reference_input_deg": 90.0,
+    "purpose": "demo pair: the same four-bar as pin-jointed and compliant parts"
+  }
+}

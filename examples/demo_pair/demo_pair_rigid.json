@@ -1,0 +1,184 @@
+{
+  "linkage": {
+    "name": "demo_pair",
+    "bodies": [
+      {
+        "name": "ground",
+        "is_ground": true
+      },
+      {
+        "name": "input",
+        "is_ground": false
+      },
+      {
+        "name": "coupler",
+        "is_ground": false
+      },
+      {
+        "name": "output",
+        "is_ground": false
+      }
+    ],
+    "joints": {
+      "A": {
+        "bodies": [
+          "ground",
+          "input"
+        ],
+        "xy_mm": [
+          0.0,
+          0.0
+        ],
+        "kind": "revolute"
+      },
+      "B": {
+        "bodies": [
+          "input",
+          "coupler"
+        ],
+        "xy_mm": [
+          1.959434878635765e-15,
+          32.0
+        ],
+        "kind": "revolute"
+      },
+      "C": {
+        "bodies": [
+          "coupler",
+          "output"
+        ],
+        "xy_mm": [
+          43.83603169013249,
+          35.79503961266559
+        ],
+        "kind": "revolute"
+      },
+      "D": {
+        "bodies": [
+          "output",
+          "ground"
+        ],
+        "xy_mm": [
+          40.0,
+          0.0
+        ],
+        "kind": "revolute"
+      }
+    },
+    "outputs": {
+      "P": {
+        "body": "coupler",
+        "xy_mm": [
+          22.0,
+          38.0
+        ]
+      }
+    },
+    "input_joint": "A",
+    "input_range_deg": [
+      79.013,
+      100.987
+    ],
+    "meta": {
+      "assembly_branch": 1,
+      "reference_input_deg": 90.0,
+      "purpose": "demo pair: the same four-bar as pin-jointed and compliant parts"
+    }
+  },
+  "layout": {
+    "joint_style": "print_in_place",
+    "clearance_mm": 0.35,
+    "level_z_mm": {
+      "base_top": 3.0,
+      "lower_links": 3.3,
+      "coupler": 6.6,
+      "coupler_top": 9.6
+    },
+    "pin_centres_mm": {
+      "A": [
+        0.0,
+        0.0
+      ],
+      "B": [
+        1.959434878635765e-15,
+        32.0
+      ],
+      "C": [
+        43.83603169013249,
+        35.79503961266559
+      ],
+      "D": [
+        40.0,
+        0.0
+      ]
+    },
+    "bolt_holes_mm": [
+      [
+        -3.0,
+        -7.0
+      ],
+      [
+        -3.0,
+        -15.0
+      ],
+      [
+        43.0,
+        -7.0
+      ],
+      [
+        43.0,
+        -15.0
+      ]
+    ],
+    "pen_hole_mm": [
+      22.0,
+      38.0
+    ],
+    "pen_hole_z_mm": 6.6,
+    "n_moving_joints": 4,
+    "n_printed_bodies": 1,
+    "n_fasteners": 0,
+    "warnings": [
+      "pin clearance 0.35 mm radial is a DESIGN CHOICE, not a measurement: if the joints seize, reprint at +0.1 mm; if they rattle, -0.1 mm",
+      "coupler-to-cap clearance 31.9 mm at A over the whole arc (needs 9.2 mm)"
+    ]
+  },
+  "printability": {
+    "ok": true,
+    "fits_envelope": true,
+    "bounding_box_mm": [
+      60.0,
+      65.0,
+      11.1
+    ],
+    "envelope_mm": [
+      180.0,
+      180.0
+    ],
+    "min_feature_mm": 1.2,
+    "min_printable_mm": 0.6,
+    "below_minimum": false,
+    "below_minimum_allowed": false,
+    "notes": []
+  },
+  "estimate": {
+    "volume_mm3": 8434.696138706451,
+    "mass_g": 10.459023211996,
+    "estimated_minutes": 23.42971149640681,
+    "assumed_rate_mm3_per_s": 6.0
+  },
+  "provenance": {
+    "config_hash": null,
+    "code_commit": "56698209ca585a29e55be3ed2534fefc9ae8f219-dirty",
+    "version": "0.1.0.dev0",
+    "seed": null,
+    "created_utc": "2026-09-24T12:01:56+00:00",
+    "placeholders_used": [
+      "PLA.properties.density_kg_per_m3"
+    ],
+    "is_physical": false,
+    "notes": {
+      "part": "demo_pair_rigid"
+    }
+  }
+}
